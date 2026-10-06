@@ -1,0 +1,39 @@
+# Checks on every push and pull request. The Node job has no dependencies (Node's own test runner); the browser job
+# drives the built page in headless Chromium at phone and desktop widths.
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build is in sync with src/ and data/
+        run: node src/build.js --check
+      - name: Schema, pricing core, known quotes, links
+        run: node --test test/
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Playwright
+        run: |
+          pip install playwright pillow
+          python -m playwright install --with-deps chromium
+      - name: Every tab and control at 360, 390, 430, 768 and 1280 px
+        run: |
+          python test/browser/audit.py
+          python test/browser/interact.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-screenshots
+          path: test/browser/_out/
+          retention-days: 7

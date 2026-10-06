@@ -1,0 +1,108 @@
+# Data: what is in `data/`, how it is shaped, where it came from
+
+Every country tab is one JSON file of vehicle rows plus, for the US and India, a table of state tax rules. The files
+are plain JSON arrays of arrays (compact, diff-friendly, no keys to misspell). `src/script.html` names the fields in
+`US_FIELDS`, `IN_FIELDS` and `G_FIELDS`, and `test/data.test.mjs` enforces everything below.
+
+**Compile date: 29 September 2026.** Prices are the manufacturers' published prices on that day, from brand price lists
+and the main listing portal in each country (Autohome and Dongchedi for China; Carwow, What Car? and Autotrader for the
+UK; Drive, CarExpert, carsguide and RedBook for Australia; Autocosmos and brand sites for Mexico; km77 and brand tariffs
+for Spain; Autospinn and Headlightmag for Thailand; official price lists and Drom/Auto.ru for Russia; Webmotors and
+brand launch pricing for Brazil; brand sites, Unhaggle and AutoTrader.ca for Canada; manufacturer sites and EPA
+fueleconomy.gov for the US; brand sites and CarDekho/CarWale for India). Rows whose price is announced, expected or
+backed out of an all-in price carry `est = 1` and show a *Preliminary* tag.
+
+## One row per nameplate
+A row is a model, not a trim: the price range runs from the cheapest variant to the most expensive (options excluded),
+and the efficiency figures are for the most efficient common variant, the electric range for the longest-range one, the
+power for the most powerful. An EV sold under its own name (Nexon EV, Corolla Cross Hybrid where the country lists it
+separately) is its own row; a fuel option sold as a variant is part of the same row (`fuelsStr` = `"Petrol/Hybrid"`).
+
+## Global schema (CN, UK, AU, MX, ES, TH, RU, BR, CA): 20 fields
+```
+[make, model, body, size, cls, fuelsStr, fuel, price_min, price_max, co2, l100, range_km, kwh, hp, seats, drive, mkt, note, est, isNew]
+```
+| # | field | rules |
+|---|---|---|
+| 0 | make | brand as sold locally ("Chirey" in Mexico, "GWM" in Australia, "Caoa Chery" in Brazil) |
+| 1 | model | model name without the brand |
+| 2 | body | `Hatch` `Sedan` `SUV` `MPV` `Pickup` `Van` `Coupe` `Conv` `Wagon` `Sports` |
+| 3 | size | `City` (A-segment) `Small` (B) `Compact` (C) `Midsize` (D) `Large` (E, full-size pickups) `Full-size` (F, Land Cruiser class) |
+| 4 | cls | `Mainstream` `Luxury` `Exotic` |
+| 5 | fuelsStr | every fuel option joined by `/` from `Petrol` `Diesel` `Hybrid` (full hybrid; mild hybrids count as petrol or diesel) `PHEV` (also range-extenders) `EV` `CNG` `LPG` |
+| 6 | fuel | the primary fuel the efficiency figures describe; must appear in `fuelsStr` |
+| 7–8 | price_min, price_max | integers in local currency on the country's price basis (below); max ≥ min |
+| 9 | co2 | combined g/km on the local official cycle for the base variant, or `null`; drives the UK, Spanish, Thai and Australian tax rules |
+| 10 | l100 | combined litres per 100 km for the most efficient common variant (charge-sustaining figure for plug-ins); `null` for EVs |
+| 11 | range_km | electric range in km on the local cycle (CLTC, WLTP, NEDC, EPA as published) for the longest-range variant; EV 100–1300, PHEV 20–500, otherwise `null` |
+| 12 | kwh | battery size of the biggest pack; `null` if unknown or not electric |
+| 13 | hp | peak power (PS/hp) of the most powerful variant, 20–1600 |
+| 14 | seats | maximum seats, 2–17 |
+| 15 | drive | free text like `FWD`, `RWD`, `AWD`, `4WD`, `FWD/AWD`; the drivetrain filter matches `AWD|4WD`, `FWD`, `RWD` |
+| 16 | mkt | `hot` (sells at list, waiting lists), `steady` (small discounts), `deals` (big discounts, run-out, price war). Sets the dealer price band in `BAND[cc]` and the card badge |
+| 17 | note | one plain-English line, ≤ 150 characters, no double quotes: the one thing a buyer should know |
+| 18 | est | 1 if the price is estimated, announced or converted; shows the *Preliminary* tag and can be filtered out |
+| 19 | isNew | 1 if launched, replaced or facelifted in 2025–26; drives the *New or updated* tag and filter |
+
+### Price basis per country
+| Tab | File | Basis (what is already inside the number) |
+|---|---|---|
+| China | `cars_cn.json` | 厂商指导价 (guide price), CNY; includes 13% VAT and consumption tax |
+| UK | `cars_uk.json` | OTR price, GBP; VAT, delivery, plates, £55 registration and first-year VED included; pickups shown VAT-inclusive |
+| Australia | `cars_au.json` | RRP before on-road costs, AUD; GST and Luxury Car Tax included |
+| Mexico | `cars_mx.json` | precio de lista, MXN; IVA and ISAN included |
+| Spain | `cars_es.json` | PVP recomendado, EUR; IVA and impuesto de matriculación included, before campaigns |
+| Thailand | `cars_th.json` | ราคาป้าย retail price, THB; excise, interior tax and 7% VAT included |
+| Russia | `cars_ru.json` | РРЦ recommended price, RUB; 20% VAT, utilisation fee and duty included; official importers only |
+| Brazil | `cars_br.json` | preço de tabela, BRL, São Paulo; IPI, PIS/COFINS, ICMS and frete included |
+| Canada | `cars_ca.json` | MSRP before freight and PDI, CAD |
+
+## US schema: 21 fields (`cars_us.json`)
+```
+[make, model, year, body, size, cls, fuel, msrp, top, dest, city, hwy, mpg, range_mi, mpge, hp, seats, drive, mkt, note, est]
+```
+`year` is 2025 (leftover), 2026 or 2027 (early arrival). `body` adds `Truck` and `Minivan`; `size` is `Subcompact`
+`Compact` `Midsize` `Full-size` `Heavy-duty`; `fuel` is one of `Gas` `Diesel` `Hybrid` `PHEV` `EV` `Hydrogen`. `msrp`
+and `top` are the base and top-trim MSRP before the destination charge `dest`. `city`, `hwy`, `mpg` are EPA figures
+(`null` for EVs and for heavy trucks, which are not rated); `range_mi` and `mpge` are the EPA electric range and MPGe for
+EVs and plug-ins. The L/100 km used for unit companions is derived as 235.215 / mpg.
+
+## India schema: 20 fields (`cars_in.json`)
+```
+[make, model, body, size, cls, fuelsStr, fuel, price_lakh, top_lakh, gst, kmpl, range_km, kwh, hp, seats, drive, mkt, note, est, isNew]
+```
+Prices are **ex-showroom in lakh** (3.5 = ₹3,50,000) and are multiplied by 100,000 on load. `gst` is the slab inside the
+price (5% EVs, 18% small cars, 40% larger ones, since 22 September 2025). `size` adds `Entry` and `Sub-4m`. `kmpl` is the
+ARAI claimed mileage (km per kg for CNG); L/100 km for unit companions is 100 / kmpl.
+
+## State tables
+- `states_us.json`: `code → [name, sales tax %, typical dealer doc fee $, note]`, 50 states + DC + `US` (nationwide
+  average). Connecticut's 7.75% above $50,000 and South Carolina's $500 cap are special-cased in `usTax()`.
+- `states_in.json`: `code → {name, p, d, c, ev, mult, fixed, cap, min, preGst, city, note}`: road-tax slabs by
+  price (lakh) for petrol (`p`), diesel (`d`), CNG (`c`) and EVs (`ev`, empty = exempt), a cess multiplier, fixed and
+  capped amounts, whether the slab applies to the pre-GST price, and a city surcharge. `BH` is the Bharat series.
+- Every other country's regions and rates live in `src/script.html` next to the breakdown function that uses them
+  (`REGIONS`, `RU_TAX`, `BR_ST`, `CA_PROV`, `CA_FREIGHT`, the Australian duty formulas, the Mexican ISAN table…), with
+  the research behind them in [`docs/tax-notes/`](tax-notes/).
+
+## How the on-road price is estimated
+1. **Dealer band.** `BAND[cc][mkt]` gives the share of list a car in that demand level sells for (US `deals`: 87–94%
+   of sticker; China `deals`: 70–85%; NEVs in China have their own tighter bands). The band and its reason are shown on
+   the card and in the breakdown.
+2. **Taxes and fees** for the chosen region are applied to both ends of the band by the country's `bd<CC>()` function.
+   Lines marked `info` (insurance in most countries, trade-in subsidies, KASKO, next year's transport tax) are shown
+   but not added; lines marked `est` are the estimated ones.
+3. **Rebates** that the dealer takes off at purchase (the UK Electric Car Grant, Canada's EVAP and provincial rebates)
+   are subtracted; rebates paid afterwards (Spain's Plan Auto+, China's trade-in subsidy) are shown as information.
+4. **World tab.** Each car's home on-road price for its default region is converted at the ECB reference rates of
+   29 September 2026 (`FX`; rubles at the market rate).
+
+Fuel cost uses the country's default fuel and electricity prices and typical annual distance (`COUNTRIES[cc].assume`,
+editable in the app), with a 12% charging-loss factor (25% for CLTC-rated ranges). Monthly payment is a standard
+amortised loan on the midpoint of the on-road range with the country's typical rate, term and down payment.
+
+## Adding or fixing rows
+Edit the JSON (keep the field order), then `node src/build.js && node --test`. The tests reject a wrong length, an
+unknown enum, a range outside the plausible limits, a duplicate make+model, a note with a double quote, and any
+car-region combination whose total comes out non-finite or implausible. A pull request with the source of the price in
+its description is all it takes.

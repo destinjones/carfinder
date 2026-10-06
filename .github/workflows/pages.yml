@@ -1,0 +1,44 @@
+# Deploys the website on every push to main: the repository as it is, minus the parts the site never loads.
+# Settings > Pages > Source must be "GitHub Actions" (free on a public repository).
+name: Website
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build the app page and check it
+        run: |
+          node src/build.js
+          node --test test/
+      - name: Assemble the site
+        run: |
+          mkdir -p _site
+          rsync -a --exclude '.git' --exclude '.github' --exclude '_site' --exclude 'test' --exclude 'dist' --exclude 'node_modules' \
+                --exclude 'brand/tools' --exclude 'docs/tax-notes' ./ _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

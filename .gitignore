@@ -1,0 +1,10 @@
+# local / generated
+.claude/
+__pycache__/
+*.pyc
+*.log
+dist/
+node_modules/
+_site/
+# browser-test output (screenshots the checks write; the website's own screenshots live in brand/shots/)
+test/browser/_out/

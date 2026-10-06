@@ -1,0 +1,1073 @@
+<script>
+/* ===== data ===== */
+const RAW = { US: /*__CARS_US__*/[], IN: /*__CARS_IN__*/[], CN: /*__CARS_CN__*/[], UK: /*__CARS_UK__*/[], AU: /*__CARS_AU__*/[], MX: /*__CARS_MX__*/[], ES: /*__CARS_ES__*/[], TH: /*__CARS_TH__*/[], RU: /*__CARS_RU__*/[], BR: /*__CARS_BR__*/[], CA: /*__CARS_CA__*/[] };
+const STATES_US = /*__STATES_US__*/{};
+const STATES_IN = /*__STATES_IN__*/{};
+//<<core
+/* ---------- normalisation into one schema ---------- */
+const US_FIELDS = ['make','model','year','body','size','cls','fuel','price','top','dest','city','hwy','mpg','rngMi','mpge','hp','seats','drive','mkt','note','est'];
+const IN_FIELDS = ['make','model','body','size','cls','fuelsStr','fuel','price','top','gst','kmpl','rng','kwh','hp','seats','drive','mkt','note','est','isNew'];
+const G_FIELDS  = ['make','model','body','size','cls','fuelsStr','fuel','price','top','co2','l100','rng','kwh','hp','seats','drive','mkt','note','est','isNew'];
+function normalize(raw, cc){
+  return raw.map((r,i) => {
+    const o = {id:i, cc, year:2026, isNew:0, co2:null, l100:null, rng:null, kwh:null, dest:0, gst:null, mpge:null, city:null, hwy:null};
+    const F = cc==='US' ? US_FIELDS : cc==='IN' ? IN_FIELDS : G_FIELDS;
+    F.forEach((k,j) => o[k] = r[j]);
+    if (cc==='US'){ o.fuels = [o.fuel]; o.eff = o.mpg; o.rng = o.rngMi; if (o.mpg) o.l100 = 235.215/o.mpg; }
+    else if (cc==='IN'){ o.fuels = o.fuelsStr.split('/'); o.price = Math.round(o.price*100000); o.top = Math.round(o.top*100000); o.eff = o.kmpl; if (o.kmpl) o.l100 = 100/o.kmpl; }
+    else { o.fuels = o.fuelsStr.split('/'); o.eff = o.l100; }
+    return o;
+  });
+}
+/* ---------- money ---------- */
+const en = (n,d=0) => Math.round(n).toLocaleString('en-US',{maximumFractionDigits:d});
+const trim0 = s => s.replace(/\.0+$/,'').replace(/(\.\d*?)0+$/,'$1');
+function fmtIN(n){ n = Math.round(n); const s = String(Math.abs(n)); if (s.length <= 3) return (n<0?'-':'') + '₹' + s; const last3 = s.slice(-3); let rest = s.slice(0,-3); rest = rest.replace(/\B(?=(\d{2})+(?!\d))/g, ','); return (n<0?'-':'') + '₹' + rest + ',' + last3; }
+function fmtINshort(n){ if (n >= 1e7) return '₹' + trim0((n/1e7).toFixed(2)) + ' Cr'; if (n >= 1e5) return '₹' + trim0((n/1e5).toFixed(2)) + ' L'; return fmtIN(n); }
+const kNum = (n, big) => { if (big && n >= 1e7) return trim0((n/1e6).toFixed(1)) + big; if (big && n >= 1e6) return trim0((n/1e6).toFixed(2)) + big; if (n >= 100000) return en(n/1000) + 'k'; if (n >= 1000) return trim0((n/1000).toFixed(1)) + 'k'; return en(n); };
+const kFmt = (sym, n, big) => sym + kNum(n, big);
+const rangeFmt = (sym, big) => (lo, hi) => sym + kNum(lo, big) + '–' + kNum(hi, big);
+const wan = n => n>=1e6 ? trim0((n/1e4).toFixed(0))+'万' : n>=1e5 ? trim0((n/1e4).toFixed(1))+'万' : n>=1e4 ? trim0((n/1e4).toFixed(2))+'万' : en(n);
+const MONEY = {
+  US: {money:n=>'$'+en(n), k:n=>kFmt('$',n,'M'), range:rangeFmt('$','M')},
+  IN: {money:fmtIN, k:fmtINshort, range:(lo,hi)=>fmtINshort(lo)+'–'+fmtINshort(hi).replace('₹','')},
+  CN: {money:n=>'¥'+en(n), k:n=>'¥'+wan(n), range:(lo,hi)=>'¥'+wan(lo)+'–'+wan(hi)},
+  UK: {money:n=>'£'+en(n), k:n=>kFmt('£',n,'m'), range:rangeFmt('£','m')},
+  AU: {money:n=>'A$'+en(n), k:n=>kFmt('A$',n,'M'), range:rangeFmt('A$','M')},
+  MX: {money:n=>'MX$'+en(n), k:n=>kFmt('MX$',n,'M'), range:rangeFmt('MX$','M')},
+  ES: {money:n=>'€'+en(n), k:n=>kFmt('€',n,'M'), range:rangeFmt('€','M')},
+  TH: {money:n=>'฿'+en(n), k:n=>kFmt('฿',n,'M'), range:rangeFmt('฿','M')},
+  RU: {money:n=>en(n)+' ₽', k:n=>kNum(n,'M')+' ₽', range:(lo,hi)=>kNum(lo,'M')+'–'+kNum(hi,'M')+' ₽'},
+  BR: {money:n=>'R$'+en(n), k:n=>kFmt('R$',n,'M'), range:rangeFmt('R$','M')},
+  CA: {money:n=>'C$'+en(n), k:n=>kFmt('C$',n,'M'), range:rangeFmt('C$','M')}
+};
+/* ---------- world currency ---------- */
+const FX = {USD:1, EUR:0.8807, GBP:0.7549, INR:95.99, CNY:6.703, AUD:1.4277, MXN:17.897, THB:33.515, RUB:73.5, BRL:5.2115, CAD:1.418};   // per US dollar, ECB reference rates 29 Sept 2026 (RUB: market rate)
+const CUR = {US:'USD', IN:'INR', CN:'CNY', UK:'GBP', AU:'AUD', MX:'MXN', ES:'EUR', TH:'THB', RU:'RUB', BR:'BRL', CA:'CAD'};
+const CUR_NAME = {USD:'US dollars', EUR:'euros', GBP:'British pounds', INR:'Indian rupees', CNY:'Chinese yuan', AUD:'Australian dollars', MXN:'Mexican pesos', THB:'Thai baht', RUB:'Russian rubles', BRL:'Brazilian reais', CAD:'Canadian dollars'};
+const CUR_FMT = {USD:MONEY.US, EUR:MONEY.ES, GBP:MONEY.UK, INR:MONEY.IN, CNY:MONEY.CN, AUD:MONEY.AU, MXN:MONEY.MX, THB:MONEY.TH, RUB:MONEY.RU, BRL:MONEY.BR, CAD:MONEY.CA};
+let WCUR = 'USD';
+function toWorld(amount, cc){ return amount / FX[CUR[cc]] * FX[WCUR]; }
+MONEY.ALL = {money:n=>CUR_FMT[WCUR].money(n), k:n=>CUR_FMT[WCUR].k(n), range:(lo,hi)=>CUR_FMT[WCUR].range(lo,hi)};
+/* ---------- dealer price bands (share of list) ---------- */
+const BAND = {
+  US:{hot:[1.00,1.05], steady:[0.955,1.00], deals:[0.87,0.94]},
+  IN:{hot:[1.00,1.02], steady:[0.97,1.00], deals:[0.88,0.96]},
+  CN:{hot:[0.98,1.00], steady:[0.90,0.97], deals:[0.70,0.85]},
+  UK:{hot:[0.98,1.00], steady:[0.91,0.96], deals:[0.75,0.88]},
+  AU:{hot:[0.98,1.00], steady:[0.95,0.98], deals:[0.85,0.94]},
+  MX:{hot:[0.98,1.00], steady:[0.95,0.98], deals:[0.85,0.94]},
+  ES:{hot:[0.97,1.00], steady:[0.91,0.96], deals:[0.83,0.92]},
+  TH:{hot:[1.00,1.00], steady:[0.97,0.99], deals:[0.85,0.92]},
+  RU:{hot:[0.97,1.00], steady:[0.90,0.95], deals:[0.75,0.88]},
+  BR:{hot:[0.97,1.00], steady:[0.93,0.97], deals:[0.80,0.92]},
+  CA:{hot:[0.98,1.00], steady:[0.95,0.98], deals:[0.85,0.94]}
+};
+const MKT_TXT = {
+  US:{hot:['Sells at or above sticker','High demand and low supply. Expect little or no discount; some dealers add a markup. Shop several dealers and ask for MSRP.'], steady:['Small discounts are typical','Normal supply. A few percent off sticker is common with a little negotiation, plus whatever incentives the brand is running this month.'], deals:['Big discounts and incentives typical','Plenty of inventory or a slow seller. Manufacturer cash, cheap financing and dealer discounts often stack up to 10% or more off sticker.']},
+  IN:{hot:['Waiting period; no discount','Demand outruns supply. Expect to pay full ex-showroom, wait weeks or months, and be pushed toward accessories or insurance bundles. Book at more than one dealer.'], steady:['Small discounts are typical','Normal supply. ₹10,000 to ₹50,000 off in cash, exchange or corporate bonuses is common, more at month- and quarter-end.'], deals:['Big discounts typical','Slow seller or plenty of stock. Cash, exchange and corporate discounts often stack to 5% to 12% off ex-showroom; ask for the dealer’s own discount on top.']},
+  CN:{hot:['Sells at guide price; waiting list','New NEV launches sold direct or on allocation. Perks are finance or insurance packs, not cash. Delivery waits of weeks to months.'], steady:['3% to 10% off is typical','Mainstream NEVs and Chinese brands: cash or trade-in bonuses, more on older stock. Ask for the 裸车价 (bare price) in writing.'], deals:['15% to 35% off is typical','Joint-venture petrol cars and German luxury are being cleared in the price war. Passat, Magotan, Accord, 5 Series and E-Class routinely go 25% below guide price.']},
+  UK:{hot:['Sells at OTR; waiting list','0% to 2% off at best and a 3 to 12 month wait. Brokers cannot beat the price, so pick the dealer with the earliest slot.'], steady:['4% to 9% off is typical','What Car? Target Price and Carwow offers usually land 5% to 8% under OTR, plus £500 to £1,500 deposit contributions on PCP.'], deals:['12% to 25% off is typical','EVs over £37k, Stellantis brands, run-out models and pre-registered stock. 0% APR, free chargers and two years’ servicing are common sweeteners.']},
+  AU:{hot:['Sells at RRP; sometimes a wait','Toyota and Tesla-style demand: dealers trim dealer delivery at most. Ask for the earliest build slot rather than a discount.'], steady:['2% to 5% off is typical','$1,000 to $3,000 off, dealer delivery waived or an accessory pack, especially in the last fortnight of each quarter.'], deals:['6% to 15% off is typical','Chinese-brand price war, diesel utes after the fuel shock, and run-out stock. Advertised drive-away deals usually waive all on-roads.']},
+  MX:{hot:['Sells at list; waiting list','Versa, Hilux, RAV4, Jimny-style demand. No bonos; at best a free accessory pack. Book early.'], steady:['2% to 5% off is typical','$10,000 to $30,000 bonos or subsidised financing; ask for the precio de contado and the bono de marca at month-end.'], deals:['6% to 15% off is typical','Chinese brands, slow sellers and 2025 stock. El Buen Fin (November) and the December remate are the biggest windows; 0% interest promos are the usual form.']},
+  ES:{hot:['Sells at PVP; some waiting','Dacia, new Clio, RAV4, Cupra Raval: 0% to 3% off. Waits of 4 to 6 months on hot launches.'], steady:['4% to 9% off is typical','Brand campaign plus a financing discount (often conditional on a 36-month loan you can repay after 12 months).'], deals:['10% to 20% off is typical','Toyota fixed promos, Stellantis campaigns, MG, Tesla bonuses, ID.3/ID.4 and km-0 stock at 15% to 25% off.']},
+  TH:{hot:['Sells at list; waiting list','Hilux Travo, Land Cruiser FJ, Jimny, Alphard: full price, film and mats as the only extras.'], steady:['1% to 3% off, plus freebies','Japanese mainstream: ฿15,000 to ฿40,000 in film, insurance and accessories plus 0.99% to 2.99% finance; Motor Show packages worth 4% to 6%.'], deals:['8% to 15% off is typical','Run-out models and the Chinese EV price war: special prices, free wall-box and 0% to 1.98% finance on top of already-cut list prices.']},
+  RU:{hot:['Sells at list; waiting list','Tenet, Jeland, Belgee and Lada Iskra to order: no benefits, and dealers push add-on packages hardest here.'], steady:['5% to 10% off through benefits','Direct, trade-in and credit discounts (выгоды) stack; only a minority of buyers get all three. Ask for the price without the add-on package.'], deals:['12% to 25% off is typical','Imported Chinese cars, Lada stock, Moskvich and Xcite: stock overhang, a 14% key rate and the January 2027 utilisation-fee rise mean 2026 stock is being cleared, 30%+ on 2025 model-year cars.']},
+  BR:{hot:['Sells at tabela; waiting list','Polo, Onix, HB20, Avenger, Corolla and Corolla Cross hybrids, Hilux automatics: free accessories at best and a 2 to 6 month wait on hybrids in São Paulo.'], steady:['3% to 7% off through bonuses','R$5,000 to R$12,000 bônus de fábrica, 0.99%-a-month or taxa zero promos, R$10,000 trade-in bonuses; month-end and October run-out matter.'], deals:['8% to 20% off is typical','Pulse/Fastback/Toro, Compass/Commander, SW4, Nivus/Taos, imported EVs and 2025-plate luxury stock: cash discounts or taxa zero with a big entrada; CNPJ and PcD tabelas run 10% to 30% under retail.']},
+  CA:{hot:['Sells at MSRP; sometimes a wait','Toyota hybrids and the Canadian-built RAV4, Kia EV4/EV5, Defender, Porsche 911: dealers trim the admin fee at most; Quebec gets a third of the country\u2019s EV supply.'], steady:['2% to 5% off, or a subsidised rate','C$500 to C$2,000 cash or 0.99% to 3.99% financing worth C$1,500 to C$3,000; quarter-end and the September to November model-year changeover are the moments to push.'], deals:['6% to 15% off is typical','Nissan, Mitsubishi, Stellantis, GM trucks and EVs, VW at 0% over 60 months, and sub-C$50,000 EVs competing with the C$39,490 Model 3 and C$38,995 EV4 on top of the federal EVAP rebate.']},
+  ALL:{hot:['Sells at list in its home market','Waiting list or allocation at home; discounts are rare.'], steady:['Small discounts typical at home','A few percent off list in its home market with normal negotiation.'], deals:['Big discounts typical at home','Slow seller, run-out or price war in its home market; expect 10% or more off list.']}
+};
+/* ---------- fuel cost, payment ---------- */
+function monthlyPay(price, A){ const P = price*(1 - A.down/100); const r = A.apr/100/12; const n = A.term; if (r===0) return P/n; return P*r/(1-Math.pow(1+r,-n)); }
+function fuelCost(c, A, cc){
+  if (cc==='US'){
+    const m = A.miles;
+    if (c.fuel==='EV') return c.mpge ? m/c.mpge*33.7*A.elec : null;
+    if (c.fuel==='Hydrogen') return m*0.014*36;
+    if (c.fuel==='PHEV'){ if (!c.mpg) return null; return (c.mpge ? m*0.55/c.mpge*33.7*A.elec : 0) + m*0.45/c.mpg*A.gas; }
+    if (!c.mpg) return null; return m/c.mpg*(c.fuel==='Diesel' ? A.gas+0.45 : A.gas);
+  }
+  const km = cc==='UK' ? A.miles*1.609 : A.miles;
+  const loss = cc==='CN' ? 1.25 : 1.12;                       // CLTC is optimistic
+  const perKm = c.kwh && c.rng ? c.kwh/(cc==='US'?c.rng*1.609:c.rng)*loss : null;
+  if (c.fuel==='EV') return perKm ? km*perKm*A.elec : null;
+  const lp = c.fuel==='Diesel' ? A.diesel : c.fuel==='CNG' ? (A.cng||A.petrol) : A.petrol;
+  if (c.fuel==='PHEV'){ if (!c.l100) return null; return (perKm ? km*0.5*perKm*A.elec : 0) + km*0.5/100*c.l100*lp; }
+  if (!c.l100) return null;
+  return km/100*c.l100*lp;
+}
+/* ---------- efficiency display ---------- */
+/* US-unit companions: every non-US figure carries a slash with its mpg / miles equivalent */
+const usMpg = l100 => l100 ? Math.round(235.215/l100) : null;                 // US gallon
+const usMi = km => km ? Math.round(km/1.609) : null;
+function effShort(c, cc){
+  const kmRange = cc==='US' ? null : c.rng;                                    // c.rng is km outside the US tab
+  if (cc==='ALL'){
+    const u = WUNIT; const mi = usMi(c.rng);
+    const rangeTxt = u==='mpg' ? mi+' mi' : Math.round(c.rng)+' km / '+mi+' mi';
+    if (c.fuel==='EV'||c.fuel==='Hydrogen') return rangeTxt+' range';
+    const ice = !c.l100 ? 'hybrid' : u==='mpg' ? usMpg(c.l100)+' mpg' : u==='kml' ? (Math.round(100/c.l100*10)/10)+' km/L / '+usMpg(c.l100)+' mpg' : (Math.round(c.l100*10)/10)+' L/100km / '+usMpg(c.l100)+' mpg';
+    if (c.fuel==='PHEV') return rangeTxt+' electric + '+ice;
+    return c.l100 ? ice : 'Not rated';
+  }
+  if (cc==='US'){ if (c.fuel==='EV'||c.fuel==='Hydrogen') return c.rng+' mi range'; if (c.fuel==='PHEV') return c.rng+' mi electric + '+c.mpg+' mpg'; return c.mpg ? c.mpg+' mpg' : 'Not EPA-rated'; }
+  if (cc==='IN'){ const ice = c.kmpl ? c.kmpl+' kmpl / '+usMpg(100/c.kmpl)+' mpg' : null; if (c.fuel==='EV') return c.rng+' km / '+usMi(c.rng)+' mi range'; if (c.fuel==='PHEV') return c.rng+' km / '+usMi(c.rng)+' mi electric + '+(ice||'hybrid'); return ice || 'Not rated'; }
+  const u = EFF_UNIT[cc];
+  const ice = !c.l100 ? null : u==='mpg' ? Math.round(282.48/c.l100)+' mpg UK / '+usMpg(c.l100)+' mpg US' : u==='kml' ? (Math.round(100/c.l100*10)/10)+' km/L / '+usMpg(c.l100)+' mpg' : c.l100+' L/100km / '+usMpg(c.l100)+' mpg';
+  const rangeTxt = cc==='UK' ? usMi(c.rng)+' mi' : c.rng+' km / '+usMi(c.rng)+' mi';
+  if (c.fuel==='EV') return rangeTxt+' range';
+  if (c.fuel==='PHEV') return rangeTxt+' electric + '+(ice||'hybrid');
+  return ice || 'Not rated';
+}
+const EFF_UNIT = {CN:'l100', UK:'mpg', AU:'l100', MX:'kml', ES:'l100', TH:'kml', RU:'l100', BR:'kml', CA:'l100'};
+/* ---------- regions ---------- */
+const REGIONS = {
+  CN: {SH:['Shanghai'],BJ:['Beijing'],GZ:['Guangzhou'],SZ:['Shenzhen'],HZ:['Hangzhou'],TJ:['Tianjin'],CD:['Chengdu'],CQ:['Chongqing'],XX:['Other cities (no plate limits)']},
+  UK: {GB:['England, Scotland & Wales'],NI:['Northern Ireland']},
+  AU: {NSW:['New South Wales'],VIC:['Victoria'],QLD:['Queensland'],WA:['Western Australia'],SA:['South Australia'],TAS:['Tasmania'],ACT:['ACT'],NT:['Northern Territory']},
+  MX: {CDMX:['Ciudad de México'],MEX:['Estado de México'],JAL:['Jalisco'],NL:['Nuevo León'],GTO:['Guanajuato'],PUE:['Puebla'],QRO:['Querétaro'],VER:['Veracruz'],YUC:['Yucatán'],BC:['Baja California'],CHH:['Chihuahua'],XX:['Otro estado']},
+  ES: {PEN:['Península (general)'],MAD:['Madrid'],CAT:['Cataluña'],AND:['Andalucía'],VAL:['Comunidad Valenciana'],PV:['País Vasco'],GAL:['Galicia'],CAN:['Canarias'],CEU:['Ceuta y Melilla']},
+  TH: {TH:['Thailand (same taxes nationwide)']},
+  RU: {MOW:['Moscow'],MO:['Moscow Oblast'],SPB:['St Petersburg'],TAT:['Tatarstan (Kazan)'],KDA:['Krasnodar Krai'],SVE:['Sverdlovsk (Yekaterinburg)'],NVS:['Novosibirsk'],BA:['Bashkortostan (Ufa)'],CHE:['Chelyabinsk'],SAM:['Samara'],XX:['Other regions']},
+  BR: {SP:['São Paulo'],RJ:['Rio de Janeiro'],MG:['Minas Gerais'],PR:['Paraná'],RS:['Rio Grande do Sul'],SC:['Santa Catarina'],BA:['Bahia'],DF:['Distrito Federal'],GO:['Goiás'],PE:['Pernambuco'],CE:['Ceará'],XX:['Outro estado']},
+  CA: {ON:['Ontario'],QC:['Quebec'],BC:['British Columbia'],AB:['Alberta'],MB:['Manitoba'],SK:['Saskatchewan'],NS:['Nova Scotia'],NB:['New Brunswick'],NL:['Newfoundland & Labrador'],PE:['Prince Edward Island'],YT:['Territories']}
+};
+const REGION_DEFAULT = {CN:'XX', UK:'GB', AU:'NSW', MX:'CDMX', ES:'PEN', TH:'TH', RU:'MOW', BR:'SP', CA:'ON', ALL:'USD'};
+/* ---------- US ---------- */
+function usState(code){ const s = STATES_US[code] || STATES_US.US; return {code, name:s[0], rate:s[1], doc:s[2], note:s[3]}; }
+function usTax(st, price){ if (st.code==='CT') return price > 50000 ? price*0.0775 : price*0.0635; if (st.code==='SC') return Math.min(price*0.05, 500); return price*st.rate/100; }
+function bdUS(c, msrp, st, M){
+  const b = BAND.US[c.mkt]; const s = msrp + c.dest; const lo = s*b[0], hi = s*b[1];
+  const f = p => p + st.doc + usTax(st,p) + 350;
+  const L = [];
+  L.push({k:'MSRP', sub:'manufacturer’s sticker price', v:M.money(msrp)});
+  L.push({k:'Destination charge', sub:'mandatory, not negotiable', v:M.money(c.dest)});
+  L.push({k:'Window sticker total', v:M.money(s), cls:'bold'});
+  L.push({k:'Typical dealer price', sub:`${MKT_TXT.US[c.mkt][0].toLowerCase()} (${pct(b)})`, v:`${M.money(lo)} – ${M.money(hi)}`, cls:'est'});
+  L.push({k:'Sales tax', sub:st.note, v:`${M.money(usTax(st,lo))} – ${M.money(usTax(st,hi))}`});
+  L.push({k:'Dealer doc fee', sub:`typical for ${st.name}; ask before you sign`, v:M.money(st.doc)});
+  L.push({k:'Title, registration, plates', sub:'varies by state and vehicle', v:'~'+M.money(350)});
+  return {dlo:lo, dhi:hi, lo:f(lo), hi:f(hi), lines:L, head:st.name};
+}
+/* ---------- India ---------- */
+function inState(code){ const s = STATES_IN[code] || STATES_IN.IN; return Object.assign({code}, s); }
+function slabPct(slabs, lakh){ for (const [upto,p] of slabs) if (lakh <= upto) return p; return slabs[slabs.length-1][1]; }
+function inRoadTax(st, c, invoice){
+  const lakh = invoice/100000; let slabs = st.p;
+  if (c.fuel==='EV') slabs = st.ev.length ? st.ev : null; else if (c.fuel==='Diesel' && st.d) slabs = st.d; else if (c.fuel==='CNG' && st.c) slabs = st.c;
+  if (!slabs) return {tax:0, p:0};
+  const base = st.preGst ? invoice/(1 + c.gst/100) : invoice; const p = slabPct(slabs, lakh);
+  let tax = base*p/100*st.mult + (st.fixed||0); if (st.city && c.fuel!=='EV') tax += invoice*st.city/100; if (st.min) tax = Math.max(tax, st.min); if (st.cap) tax = Math.min(tax, st.cap);
+  return {tax, p};
+}
+function inIns(c, ex){ const p = ex<=1000000 ? 0.035 : ex<=3000000 ? 0.03 : 0.026; return Math.max(15000, ex*(p + (c.fuel==='EV'?0.003:0))); }
+function bdIN(c, ex, st, M){
+  const b = BAND.IN[c.mkt]; const lo = ex*b[0], hi = ex*b[1]; const ins = inIns(c, ex);
+  const f = p => { const rt = inRoadTax(st,c,p); const tcs = p>1000000 ? p*0.01 : 0; return {t:p + rt.tax + 3000 + ins + tcs, rt, tcs}; };
+  const Lo = f(lo), Hi = f(hi); const L = [];
+  L.push({k:'Ex-showroom', sub:`includes ${c.gst}% GST (${M.money(ex*c.gst/(100+c.gst))})`, v:M.money(ex)});
+  L.push({k:'Typical dealer price', sub:`${MKT_TXT.IN[c.mkt][0].toLowerCase()} (${pct(b)})`, v:`${M.money(lo)} – ${M.money(hi)}`, cls:'est'});
+  L.push({k:'Road tax (RTO)', sub:`${Lo.rt.p===Hi.rt.p ? (Lo.rt.p ? Lo.rt.p+'%' : 'exempt') : Lo.rt.p+'% to '+Hi.rt.p+'%'}${st.mult>1?' plus cess':''}; ${st.note}`, v:`${M.money(Lo.rt.tax)} – ${M.money(Hi.rt.tax)}`});
+  L.push({k:'Registration, HSRP plates, FASTag', sub:'add about ₹1,500 hypothecation if you take a loan', v:'~'+M.money(3000)});
+  L.push({k:'Insurance, first year', sub:'comprehensive with 3-year third-party; shop it online, dealers mark it up', v:'~'+M.money(ins)});
+  if (Hi.tcs) L.push({k:'TCS 1%', sub:'collected on cars above ₹10 lakh; you claim it back in your income-tax return', v:`${M.money(Lo.tcs)} – ${M.money(Hi.tcs)}`});
+  return {dlo:lo, dhi:hi, lo:Lo.t, hi:Hi.t, lines:L, head:st.name};
+}
+/* ---------- China ---------- */
+function bdCN(c, price, r, M){
+  const nev = c.fuel==='EV' || c.fuel==='PHEV';
+  const b = nev ? {hot:[0.98,1.00], steady:[0.93,0.98], deals:[0.85,0.94]}[c.mkt] : BAND.CN[c.mkt]; const lo = price*b[0], hi = price*b[1];
+  const ptax = p => { const ex = p/1.13; return nev ? 0.10*ex - Math.min(0.05*ex, 15000) : 0.10*ex; };
+  const lux = p => (p/1.13 >= 900000) ? 0.10*(p/1.13) : 0;
+  const ins = nev ? 0.014*price + 1600 : 0.011*price + 1500;
+  const vvt = c.fuel==='EV'||c.fuel==='PHEV' ? 0 : c.fuel==='Hybrid' ? 225 : 450;
+  const iceLike = !(c.fuel==='EV' || (c.fuel==='PHEV' && r!=='SH'));
+  const plate = r==='SH' ? (c.fuel==='EV' ? 0 : 93800) : r==='GZ' ? (iceLike?10300:0) : r==='SZ' ? (iceLike?12000:0) : r==='HZ' ? (iceLike?1500:0) : r==='TJ' ? (iceLike?10500:0) : 0;
+  const f = p => p + ptax(p) + lux(p) + 950 + vvt + ins + 650 + plate;
+  const L = [];
+  L.push({k:'Guide price (指导价)', sub:'includes 13% VAT and consumption tax', v:M.money(price)});
+  L.push({k:'Typical bare-car price (裸车价)', sub:`${MKT_TXT.CN[c.mkt][0].toLowerCase()} (${pct(b)})`, v:`${M.money(lo)} – ${M.money(hi)}`, cls:'est'});
+  L.push({k:'Purchase tax (购置税)', sub: nev ? '5% of the ex-VAT price for NEVs in 2026-27 (reduction capped at ¥15,000)' : '10% of the ex-VAT price', v:`${M.money(ptax(lo))} – ${M.money(ptax(hi))}`});
+  if (lux(hi)) L.push({k:'Super-luxury tax', sub:'extra 10% at retail on cars over ¥900,000 ex-VAT', v:`${M.money(lux(lo))} – ${M.money(lux(hi))}`});
+  L.push({k:'Compulsory insurance (交强险) + vehicle tax', sub: vvt ? '¥950 plus annual 车船税 by engine size' : '¥950; NEVs are exempt from 车船税', v:M.money(950+vvt)});
+  L.push({k:'Commercial insurance, first year', sub:'own damage + ¥2m third party; NEV policies cost more', v:'~'+M.money(ins)});
+  L.push({k:'Registration and plates', sub:'official fees are about ¥150; dealer 上牌费 adds ¥300 to ¥1,500', v:'~'+M.money(650)});
+  if (r==='SH') L.push({k:'Shanghai plate', sub: c.fuel==='EV' ? 'free green plate for BEVs (local hukou or 3 years of social insurance)' : 'auction plate needed for petrol, hybrid and PHEV cars: Sept 2026 average ¥93,778, 17% win rate', v:M.money(plate)});
+  else if (r==='BJ') L.push({k:'Beijing plate', sub: nev ? 'NEV quota by points/waitlist (individuals about 6% success in 2026)' : 'lottery only, about 1 in 265 per round in 2026; the plate itself is free', v:'quota'});
+  else if (['GZ','SZ','HZ','TJ'].includes(r)) L.push({k:'City plate', sub: iceLike ? 'auction or lottery plate for petrol/hybrid cars (recent auction average)' : 'free NEV plate on application', v:M.money(plate)});
+  L.push({k:'Trade-in subsidy (以旧换新)', sub: nev ? 'up to ¥15,000 (8%) for replacing, ¥20,000 (12%) for scrapping an old car; paid to you after purchase' : 'up to ¥13,000 (6%) for replacing, ¥15,000 (10%) for scrapping an old car; paid after purchase', v:'not in total', cls:'info'});
+  return {dlo:lo, dhi:hi, lo:f(lo), hi:f(hi), lines:L, head:REGIONS.CN[r][0]};
+}
+/* ---------- UK ---------- */
+const ECG_BAND1 = /^(500e|A290|iX1|iX2|ë-C5 Aircross|e-C5 Aircross|Puma Gen-E|E-Tourneo Courier|Kona Electric|EV2|EV4|Countryman Electric|Leaf|Micra|4 E-Tech|5 E-Tech|Scenic E-Tech)/i;
+const ECG_MAKES = new Set(['Abarth','Alpine','BMW','Citroen','Citroën','Fiat','Ford','Hyundai','Kia','MINI','Mini','Nissan','Renault','Alfa Romeo','Cupra','DS','Jeep','Peugeot','Skoda','Toyota','Vauxhall','Volkswagen']);
+function ukVed1(co2){ return co2==null ? 10 : co2<=50 ? 115 : co2<=75 ? 135 : co2<=90 ? 280 : co2<=100 ? 365 : co2<=110 ? 405 : co2<=130 ? 455 : co2<=150 ? 560 : co2<=170 ? 1410 : co2<=190 ? 2270 : co2<=225 ? 3420 : co2<=255 ? 4850 : 5690; }
+function bdUK(c, otr, r, M){
+  const b = BAND.UK[c.mkt]; const lo = otr*b[0], hi = otr*b[1];
+  const ved1 = c.fuel==='EV' ? 10 : ukVed1(c.co2);
+  const list = otr - ved1 - 55;
+  const grantOK = c.fuel==='EV' && list < 37000 && ECG_MAKES.has(c.make);
+  const grant = grantOK ? (ECG_BAND1.test(c.model) ? 3750 : 1500) : 0;
+  const ins = Math.min(4000, Math.max(500, 0.018*otr)) * (c.fuel==='EV'?1.15:1) * (r==='NI'?1.25:1);
+  const ecs = list > (c.fuel==='EV' ? 50000 : 40000);
+  const f = p => p - grant;
+  const L = [];
+  L.push({k:'OTR price', sub:'on the road: includes 20% VAT, delivery, plates, £55 registration and first-year road tax', v:M.money(otr)});
+  L.push({k:'of which first-year VED', sub: c.fuel==='EV' ? '£10 for zero-emission cars' : `CO2 band ${c.co2!=null ? c.co2+' g/km' : 'unknown'}; 2026-27 table`, v:M.money(ved1), cls:'info'});
+  L.push({k:'Typical dealer price', sub:`${MKT_TXT.UK[c.mkt][0].toLowerCase()} (${pct(b)})`, v:`${M.money(lo)} – ${M.money(hi)}`, cls:'est'});
+  if (c.fuel==='EV') L.push({k:'Electric Car Grant', sub: grantOK ? `taken off at the till on trims listed under £37,000 (${grant===3750?'Band 1':'Band 2'})` : (list < 37000 ? 'this maker is not on the grant scheme; some fund their own discount instead' : 'only cars listed under £37,000 qualify'), v: grant ? '−'+M.money(grant) : '£0'});
+  L.push({k:'Road tax from year 2', sub: ecs ? `£200 a year plus the £440 Expensive Car Supplement in years 2-6 (list over ${c.fuel==='EV'?'£50,000':'£40,000'})` : '£200 a year (standard rate)', v:(ecs?'£640':'£200')+'/yr', cls:'info'});
+  L.push({k:'Comprehensive insurance, first year', sub:`typical for a 35+ driver with no-claims${r==='NI'?'; Northern Ireland runs higher':''}; under-25s pay 2 to 3 times more`, v:'~'+M.money(ins), cls:'info'});
+  return {dlo:lo, dhi:hi, lo:f(lo), hi:f(hi), lines:L, head:REGIONS.UK[r][0]};
+}
+/* ---------- Australia ---------- */
+function auDuty(r, value, c){
+  const green = c.fuel==='EV' || (c.co2!=null && c.co2<=120); const ute = c.body==='Pickup' || c.body==='Van'; const hyb = c.fuel==='EV'||c.fuel==='Hybrid'||c.fuel==='PHEV';
+  switch(r){
+    case 'NSW': return value<=45000 ? 0.03*value : 1350 + 0.05*(value-45000);
+    case 'VIC': { const rate = ute ? 2.7 : green ? 4.2 : value<=80809 ? 4.2 : value<=100000 ? 5.2 : value<=150000 ? 7.0 : 9.0; return Math.ceil(value/200)*200*rate/100; }
+    case 'QLD': { const base = hyb ? 2 : c.hp<=200 ? 3 : c.hp<=330 ? 3.5 : 4; return Math.ceil(value/100)*(value>100000 ? base+2 : base); }
+    case 'WA': { const rate = value<=25000 ? 2.75 : value<=50000 ? 2.75+(value-25000)/6666.66 : 6.5; return value*rate/100; }
+    case 'SA': return ute ? 30 + 3*Math.ceil((value-2000)/100) : 60 + 4*Math.ceil((value-3000)/100);
+    case 'TAS': return value<=35000 ? 3*Math.ceil(value/100) : value<=40000 ? 1050 + 11*Math.ceil((value-35000)/100) : 4*Math.ceil(value/100);
+    case 'ACT': { const g = c.fuel==='EV' ? 0 : (c.co2==null ? 200 : c.co2); const T = g===0 ? [2.50,1125,4.00,2525] : g<=65 ? [2.67,1201.5,4.41,2745] : g<=130 ? [2.84,1278,4.81,2961.5] : g<=175 ? [3.00,1350,5.22,3177] : g<=220 ? [3.17,1426.5,5.62,3393.5] : [4.53,2038.5,7.81,4772];
+      return value<45000 ? T[0]*value/100 : value<=80000 ? T[1] + T[2]*(value-45000)/100 : T[3] + 8.00*(value-80000)/100; }
+    case 'NT': { const d = 3*Math.ceil(value/100); return (c.fuel==='EV'||c.fuel==='PHEV') ? Math.max(0, d-1500) : d; }
+  }
+  return 0.03*value;
+}
+const AU_REGO = {NSW:[1300,'rego by weight + $58 plates + a Sydney green slip (~$650) bought separately'], VIC:[1000,'rego + TAC charge (metro) + plates'], QLD:[900,'rego by cylinders + CTP + plates; EVs and hybrids pay the lowest tier'], WA:[1050,'licence fee by weight + motor injury insurance + plates'], SA:[730,'rego + CTP + levies'], TAS:[670,'rego + motor tax + MAIB premium'], ACT:[1050,'emissions-based rego + MAI insurance'], NT:[870,'engine-based rego incl. MAC injury cover; plug-in EVs pay only the MAC/admin part']};
+function bdAU(c, rrp, r, M){
+  const b = BAND.AU[c.mkt]; const lo = rrp*b[0], hi = rrp*b[1];
+  const direct = ['Tesla','Polestar','Honda','Cadillac','Smart','BYD'].includes(c.make); const dd = direct ? 400 : 2000;
+  const rego = AU_REGO[r][0] - ((c.fuel==='EV') ? (r==='QLD'?80:r==='NT'?250:0) : 0);
+  const thr = (c.fuel==='EV' || (c.l100!=null && c.l100<=3.5)) ? 91661 : 80809;
+  const lct = (c.body==='Pickup' || c.body==='Van') ? 0 : Math.max(0, rrp - thr)*10/11*0.33;
+  const ins = Math.min(4000, Math.max(1200, 0.03*rrp));
+  const f = p => p + dd + auDuty(r, p+dd, c) + rego;
+  const L = [];
+  L.push({k:'RRP', sub:'recommended retail price before on-road costs; includes GST' + (lct?' and Luxury Car Tax':''), v:M.money(rrp)});
+  if (lct) L.push({k:'of which Luxury Car Tax', sub:`33% of the value above ${M.money(thr)}, already inside the RRP`, v:M.money(lct), cls:'info'});
+  L.push({k:'Typical dealer price', sub:`${MKT_TXT.AU[c.mkt][0].toLowerCase()} (${pct(b)})`, v:`${M.money(lo)} – ${M.money(hi)}`, cls:'est'});
+  L.push({k:'Dealer delivery', sub: direct ? 'direct-sales brand: order fee only' : 'pre-delivery fee; negotiable, waived in drive-away deals', v:M.money(dd)});
+  L.push({k:'Stamp duty', sub:`${REGIONS.AU[r][0]} motor vehicle duty on the dutiable value`, v:`${M.money(auDuty(r, lo+dd, c))} – ${M.money(auDuty(r, hi+dd, c))}`});
+  L.push({k:'Registration, CTP and plates (12 months)', sub:AU_REGO[r][1], v:'~'+M.money(rego)});
+  L.push({k:'Comprehensive insurance, first year', sub:'optional but required on financed cars; $1,200 to $2,000 for a mainstream car', v:'~'+M.money(ins), cls:'info'});
+  if (c.fuel==='EV' && rrp < 91661) L.push({k:'FBT exemption', sub:'EVs under the $91,661 threshold are FBT-free on a novated lease (cap drops to $75,000 from April 2027)', v:'novated lease', cls:'info'});
+  return {dlo:lo, dhi:hi, lo:f(lo), hi:f(hi), lines:L, head:REGIONS.AU[r][0]};
+}
+/* ---------- Mexico ---------- */
+function mxIsan(P){ if (P<=356934.05) return 0; let t = P<=383940.35 ? 0.02*P : P<=460728.35 ? 7678.67+0.05*(P-383940.35) : P<=537516.64 ? 11518.25+0.10*(P-460728.35) : P<=691092.34 ? 19197.04+0.15*(P-537516.64) : 42233.35+0.17*(P-691092.34); if (P>1060189.93) t -= 0.07*(P-1060189.93); if (P<=452116.48) t *= 0.5; return t; }
+const MX_REG = {CDMX:[972,486,true,'CDMX: 3% tenencia, 100% subsidised up to $638,000 incl. IVA; EVs and hybrids 0%'], MEX:[1194,1194,true,'Edomex: 3% tenencia, subsidised up to $638,000; EVs exempt, hybrids only under 100 g/km'], JAL:[1500,1500,false,'Jalisco: no tenencia; refrendo about $1,000 a year'], NL:[2500,2500,false,'Nuevo León: no tenencia but the dearest refrendo ($4,106 a year; EVs about $2,053)'], GTO:[1473,1473,false,'Guanajuato: tenencia only on cars worth more than $450,000 pre-IVA'], PUE:[1275,1275,false,'Puebla: tenencia fully subsidised if paid by 31 March'], QRO:[1500,1500,false,'Querétaro: tenencia only on value above $800,000'], VER:[1716,1716,false,'Veracruz: tenencia fully subsidised if paid by April'], YUC:[1500,1500,false,'Yucatán: no tenencia'], BC:[1700,1700,false,'Baja California: no tenencia for ordinary cars; $1,167 revalidación yearly'], CHH:[2600,2600,false,'Chihuahua: no tenencia; revalidación $2,300 to $2,500 a year'], XX:[1500,1500,false,'most other states charge no tenencia or subsidise it fully']};
+function bdMX(c, list, r, M){
+  const b = BAND.MX[c.mkt]; const lo = list*b[0], hi = list*b[1];
+  const elec = c.fuel==='EV'||c.fuel==='Hybrid'||c.fuel==='PHEV';
+  const R = MX_REG[r]; const placas = elec ? R[1] : R[0];
+  const mega = ['CDMX','MEX','PUE','QRO'].includes(r); const holo = (mega && !elec) ? 765 : 0;
+  const ten = p => { const valor = p/1.16; if (elec) return 0; if (r==='CDMX'||r==='MEX') return p<=638000 ? 0 : 0.03*valor; if (r==='GTO') return valor>450000 ? 0.03*valor : 0; if (r==='QRO') return Math.max(0, 0.03*(valor-800000)); return 0; };
+  let P = list/1.16; P = list/1.16 - mxIsan(P); const isan = elec ? 0 : mxIsan(P);
+  const ins = Math.max(8000, list*(c.fuel==='EV'||['BYD','MG','Chirey','Omoda','Jaecoo','GWM','Geely','JAC','Changan','Jetour','Baic'].includes(c.make) ? 0.04 : 0.035));
+  const f = p => p + placas + holo + ten(p);
+  const L = [];
+  L.push({k:'Precio de lista', sub:'includes 16% IVA' + (isan ? ' and ISAN' : (elec ? '; EVs and hybrids pay no ISAN' : '; cars under about $414,000 pay no ISAN')), v:M.money(list)});
+  if (isan) L.push({k:'of which ISAN', sub:'federal new-car tax of 2% to 17% on the pre-tax price, already inside the list price', v:'~'+M.money(isan), cls:'info'});
+  L.push({k:'Typical dealer price', sub:`${MKT_TXT.MX[c.mkt][0].toLowerCase()} (${pct(b)})`, v:`${M.money(lo)} – ${M.money(hi)}`, cls:'est'});
+  L.push({k:'Alta de placas y tarjeta de circulación', sub: elec && (r==='CDMX') ? 'half price for EVs and hybrids in CDMX' : 'first registration; do it within 30 days', v:M.money(placas)});
+  if (mega) L.push({k:'Holograma', sub: elec ? 'holograma E: no verification, exempt from Hoy No Circula' : 'holograma 00 for new cars: exempt from Hoy No Circula for two years', v:M.money(holo)});
+  L.push({k:'Tenencia, first year', sub:R[3] + (ten(hi) ? '; prorated by month of purchase, then 85% of this in year 2' : ''), v: ten(hi) ? `${M.money(ten(lo))} – ${M.money(ten(hi))}` : M.money(0)});
+  L.push({k:'Seguro de cobertura amplia, first year', sub:'2.5% to 4% of value; required on financed cars; dealer quotes run 10% to 20% above online', v:'~'+M.money(ins), cls:'info'});
+  return {dlo:lo, dhi:hi, lo:f(lo), hi:f(hi), lines:L, head:REGIONS.MX[r][0]};
+}
+/* ---------- Spain ---------- */
+function esRate(c, r){ if (c.fuel==='EV' || c.co2==null) return 0; const g = c.co2; let t = g<=120 ? 0 : g<=159 ? 0.0475 : g<=199 ? 0.0975 : 0.1475; if (g>=200 && r==='AND') t = 0.169; else if (g>=200 && (r==='CAT'||r==='VAL')) t = 0.16; return t; }
+function bdES(c, pvp, r, M){
+  const t = esRate(c, 'PEN'); const base = pvp/(1.21+t);
+  let price = pvp, taxNote = `includes 21% IVA and ${t ? (t*100).toFixed(2)+'% impuesto de matriculación (CO2 '+c.co2+' g/km)' : 'no matriculación tax (CO2 under 120 g/km)'}`;
+  const tr = esRate(c, r);
+  if (r==='CAN'){ const igic = c.fuel==='EV' ? 0 : c.hp<=150 ? 0.095 : 0.15; const tc = tr ? tr-0.01 : 0; price = base*(1+igic+tc); taxNote = `Canarias price: IGIC ${(igic*100)}% instead of IVA and ${(tc*100).toFixed(2)}% matriculación`; }
+  else if (r==='CEU'){ price = base*1.06; taxNote = 'Ceuta/Melilla price: IPSI (about 6%) instead of IVA, no matriculación tax; must stay 4 years'; }
+  else if (tr!==t){ price = base*(1.21+tr); taxNote = `includes 21% IVA and ${(tr*100).toFixed(1)}% matriculación (regional rate on cars over 200 g/km)`; }
+  const b = BAND.ES[c.mkt]; const lo = price*b[0], hi = price*b[1];
+  const cero = c.fuel==='EV' || (c.fuel==='PHEV' && c.rng>=40);
+  const autoplus = cero && base <= 45000 ? (c.fuel==='EV' ? (base<=35000 ? 3375 : 2925) : (base<=35000 ? 2250 : 1800)) : 0;
+  const ivtm = c.hp<=100 ? 59 : c.hp<=170 ? 129 : c.hp<=250 ? 161 : 224;
+  const ins = Math.min(2500, Math.max(400, 0.02*price));
+  const f = p => p + 400 + ivtm*0.25;
+  const L = [];
+  L.push({k:'PVP', sub:taxNote, v:M.money(price)});
+  L.push({k:'Typical dealer price', sub:`${MKT_TXT.ES[c.mkt][0].toLowerCase()} (${pct(b)})`, v:`${M.money(lo)} – ${M.money(hi)}`, cls:'est'});
+  L.push({k:'Matriculación: tasa DGT, placas, gestoría', sub:'€99.77 DGT fee + plates + agent; dealers bill €250 to €500', v:'~'+M.money(400)});
+  L.push({k:'IVTM (impuesto de circulación), first year', sub:`prorated by quarter; about ${M.money(ivtm)} a year in a big city${cero||c.fuel==='Hybrid'?', 50% to 75% less with a CERO/ECO label':''}`, v:'~'+M.money(ivtm*0.25)});
+  if (cero) L.push({k:'Plan Auto+ rebate', sub:`up to €4,500 paid by IDAE after purchase (about ${M.money(autoplus)} for this car if not EU-built; more with EU content); funds expected to run out late 2026`, v: autoplus ? 'up to −'+M.money(autoplus) : 'over the €45,000 cap', cls:'info'});
+  if (cero) L.push({k:'IRPF deduction', sub:'15% of the price (base up to €20,000) back in your 2026 tax return; not in País Vasco/Navarra', v:'up to −€3,000', cls:'info'});
+  if (r==='CAT' && c.co2!=null && c.co2>120) L.push({k:'Catalan CO2 tax (annual)', sub:'regional tax on cars over 120 g/km', v:'~'+M.money(c.co2*(c.co2<=140?0.55:c.co2<=160?0.65:c.co2<=200?0.80:1.10))+'/yr', cls:'info'});
+  L.push({k:'Insurance, first year', sub:'terceros ampliado to todo riesgo con franquicia for a 35-55 driver', v:'~'+M.money(ins), cls:'info'});
+  return {dlo:lo, dhi:hi, lo:f(lo), hi:f(hi), lines:L, head:REGIONS.ES[r][0]};
+}
+/* ---------- Thailand ---------- */
+const TH_EV_LOCAL = new Set(['BYD','MG','GWM','Neta','Changan','Deepal','Aion','GAC Aion','Geely','Omoda','Jaecoo','Omoda & Jaecoo','Xpeng','Zeekr','Leapmotor','Wuling','Juneyao','Chery','Toyota','Volvo','Mercedes-Benz','BMW','Honda','Denza','Nissan','Mitsubishi']);
+function thExcise(c){
+  if (c.fuel==='EV') return TH_EV_LOCAL.has(c.make) ? 2 : 10;
+  if (c.fuel==='PHEV') return (c.rng||0)>=80 ? 5 : 10;
+  const g = c.co2==null ? 180 : c.co2;
+  if (c.body==='Pickup') return g<=185 ? 8 : g<=200 ? 10 : 13;
+  if (c.fuel==='Hybrid') return g<=100 ? 6 : g<=120 ? 9 : g<=150 ? 14 : g<=200 ? 19 : 24;
+  if (c.body==='SUV' && c.fuel==='Diesel' && c.hp>=150) return 25;   // PPV (Fortuner, MU-X, Everest, Pajero Sport, Terra)
+  return g<=100 ? 13 : g<=120 ? 22 : g<=150 ? 25 : g<=200 ? 29 : 34;
+}
+function bdTH(c, price, r, M){
+  const b = BAND.TH[c.mkt]; const lo = price*b[0], hi = price*b[1];
+  const cc = Math.min(4000, Math.max(1000, c.fuel==='Hybrid' ? c.hp*9 : c.fuel==='Diesel' ? c.hp*14 : c.hp*10));
+  const taxCc = 0.5*Math.min(cc,600) + 1.5*Math.max(0,Math.min(cc,1800)-600) + 4.0*Math.max(0,cc-1800);
+  const kg = 1300 + (c.kwh||60)*8;
+  const evTax = kg<=1500 ? 1000 : kg<=1750 ? 1300 : kg<=2000 ? 1600 : kg<=2500 ? 1900 : 2200;
+  const tax = c.body==='Pickup' ? 1350 : c.body==='Van' ? 1600 : c.fuel==='EV' ? evTax : taxCc;
+  const prb = c.body==='Pickup' ? 967 : c.body==='Van' ? 1182 : 645;
+  const ins = Math.max(12000, price*(c.fuel==='EV' ? 0.03 : price>3000000 ? 0.018 : 0.025));
+  const ex = thExcise(c); const exAmt = price/1.07*ex/100;
+  const f = p => p + 620 + tax + prb + 2500;
+  const L = [];
+  L.push({k:'Retail price (ราคาป้าย)', sub:'includes excise, interior tax and 7% VAT', v:M.money(price)});
+  L.push({k:'of which excise', sub:`about ${ex}% of the pre-VAT price under the 2026 CO2-based structure${c.fuel==='EV'&&ex===2?' (EV3.5 rate; subsidy already netted in the sticker)':''}`, v:'~'+M.money(exAmt), cls:'info'});
+  L.push({k:'Typical dealer price', sub:`${MKT_TXT.TH[c.mkt][0].toLowerCase()} (${pct(b)})`, v:`${M.money(lo)} – ${M.money(hi)}`, cls:'est'});
+  L.push({k:'DLT registration and plates', sub:'official fees; red plates for up to 30 days', v:'~'+M.money(620)});
+  L.push({k:'Annual tax, first year', sub: c.fuel==='EV' ? 'by weight for EVs; the 80% EV discount expired Nov 2025 (a new one is drafted)' : c.body==='Pickup' ? 'registered as a private truck (by weight)' : 'by engine size (estimated)', v:'~'+M.money(tax)});
+  L.push({k:'พ.ร.บ. compulsory insurance', sub:'fixed national premium', v:M.money(prb)});
+  L.push({k:'Dealer processing fee', sub:'ค่าดำเนินการ; ask for it itemised', v:'~'+M.money(2500)});
+  L.push({k:'First-class insurance, first year', sub:'often free on financed cars; EV policies cost 15% to 40% more', v:'~'+M.money(ins), cls:'info'});
+  return {dlo:lo, dhi:hi, lo:f(lo), hi:f(hi), lines:L, head:'Thailand'};
+}
+/* ---------- Russia ---------- */
+const RU_TAX = {MOW:[14,31,35,50,50,75,75,150,1.8,true], MO:[14,35,35,50,50,75,75,150,1.5,true], SPB:[24,35,35,50,50,75,75,150,1.64,true], TAT:[10,35,35,50,50,75,75,150,1.7,true], KDA:[12,25,25,50,50,75,75,150,1.6,false], SVE:[0,9.4,9.4,32.7,32.7,49.6,49.6,99.2,1.64,false], NVS:[12,18,18,30,30,60,60,150,1.56,false], BA:[25,35,35,50,50,75,75,150,1.64,false], CHE:[10,27,27,50,50,75,75,150,1.88,false], SAM:[16,24,33,43,43,75,75,150,1.44,false], XX:[12,30,30,45,45,70,70,150,1.2,false]};
+const RU_LOCAL = new Set(['Lada','UAZ','GAZ','Moskvich']);
+function ruTransportTax(c, r){ const T = RU_TAX[r]; const hp = c.hp; const rate = hp<=100 ? T[0] : hp<=125 ? T[1] : hp<=150 ? T[2] : hp<=175 ? T[3] : hp<=200 ? T[4] : hp<=225 ? T[5] : hp<=250 ? T[6] : T[7]; let t = hp*rate; if (c.price >= 10000000) t *= 3; if (c.fuel==='EV' && T[9]) t = 0; return t; }
+function bdRU(c, rrp, r, M){
+  const b = BAND.RU[c.mkt]; const lo = rrp*b[0], hi = rrp*b[1]; const T = RU_TAX[r];
+  const addons = RU_LOCAL.has(c.make) ? 50000 : c.cls==='Mainstream' ? 120000 : 200000;
+  const km = c.hp<=50 ? 0.6 : c.hp<=70 ? 1.0 : c.hp<=100 ? 1.1 : c.hp<=120 ? 1.2 : c.hp<=150 ? 1.4 : 1.6;
+  const osago = 5500 * T[8] * km;
+  const kasko = rrp * (RU_LOCAL.has(c.make) ? 0.035 : (c.cls!=='Mainstream' || c.fuel==='EV' || c.fuel==='PHEV') ? 0.07 : 0.045);
+  const ttax = ruTransportTax(c, r);
+  const stateLoan = RU_LOCAL.has(c.make) && rrp <= 2000000 ? Math.round(rrp*0.2) : ((c.fuel==='EV'||c.fuel==='PHEV') && ['Moskvich','Evolute','Voyah','Lada','Amberauto','Deepal','Exlantix'].includes(c.make) ? Math.min(925000, rrp*0.35) : 0);
+  const f = p => p + addons + 4500 + osago;
+  const L = [];
+  L.push({k:'Recommended price (РРЦ)', sub:'includes 20% VAT' + (RU_LOCAL.has(c.make) ? '; Russian-built, so the utilisation fee is refunded to the plant' : c.cls!=='Exotic' ? '; imported cars carry the utilisation fee (0.8 to 2.5 M ₽) and 15% duty inside the price' : ''), v:M.money(rrp)});
+  L.push({k:'Typical price after benefits (выгоды)', sub:`${MKT_TXT.RU[c.mkt][0].toLowerCase()} (${pct(b)}); direct, trade-in and credit discounts stack`, v:`${M.money(lo)} – ${M.money(hi)}`, cls:'est'});
+  L.push({k:'Dealer add-ons (допы)', sub:'mats, film, alarm, anti-corrosion the dealer bundles; illegal to force, hard to avoid on hot models', v:'~'+M.money(addons)});
+  L.push({k:'Registration at ГИБДД', sub:'state duty: plates 3,000 ₽ + СТС 1,500 ₽ (do it yourself on Gosuslugi)', v:M.money(4500)});
+  L.push({k:'ОСАГО, first year', sub:`compulsory third-party cover; ${REGIONS.RU[r][0]} territorial coefficient ${T[8]}, ${c.hp} hp; a 35-year-old with 5 clean years`, v:'~'+M.money(osago)});
+  L.push({k:'КАСКО, first year', sub:'optional comprehensive cover; banks require it on subsidised loans; Chinese brands cost more than Lada', v:'~'+M.money(kasko), cls:'info'});
+  L.push({k:'Transport tax (next year)', sub:`${c.hp} hp × ${REGIONS.RU[r][0]} rate${c.price>=10000000?' × 3 luxury coefficient':''}${c.fuel==='EV'&&T[9]?'; EVs exempt here':''}`, v:M.money(ttax)+'/yr', cls:'info'});
+  if (stateLoan) L.push({k:'State loan programme', sub: RU_LOCAL.has(c.make) ? '20% of the price paid by the state on a loan for eligible buyers (medics, teachers, families with children, SMO participants)' : '35% (up to 925,000 ₽) for Russian-assembled EVs and range-extenders on credit', v:'up to −'+M.money(stateLoan), cls:'info'});
+  return {dlo:lo, dhi:hi, lo:f(lo), hi:f(hi), lines:L, head:REGIONS.RU[r][0]};
+}
+/* ---------- Brazil ---------- */
+const BR_ST = {SP:[4,4,null,1400,1.0,0.05], RJ:[4,0.5,1.5,1200,1.015,0.05], MG:[4,4,4,1150,1.0,0.04], PR:[1.9,0,1.9,1050,1.0,0.035], RS:[3,0,3,1150,1.0,0.04], SC:[2,2,2,1000,1.0,0.04], BA:[2.5,0,2.5,1050,1.0,0.045], DF:[3.5,0,0,1150,1.0,0.04], GO:[3.75,3.75,3.75,950,1.0,0.04], PE:[2.4,0,2.4,950,1.0,0.045], CE:[3.5,2,2.5,950,1.0,0.045], XX:[3,0,3,1100,1.0,0.04]};
+const BR_CN = new Set(['BYD','GWM','Caoa Chery','Chery','Omoda','Jaecoo','Zeekr','GAC','Geely','Leapmotor','JAC','Neta','Denza','Avatr','Caoa Changan','Changan']);
+function bdBR(c, tab, r, M){
+  const st = BR_ST[r]; const list = tab*st[4];
+  const b = BAND.BR[c.mkt]; const lo = list*b[0], hi = list*b[1];
+  let rate = st[0], why = 'standard rate';
+  if (c.fuel==='EV'){ rate = st[1]; if (r==='BA' && list>300000) rate = st[0]; why = rate===0 ? 'EVs exempt' : 'EV rate'; }
+  else if (c.fuel==='Hybrid' || c.fuel==='PHEV'){ if (r==='SP'){ rate = list<=261154 ? 0 : 4; why = rate===0 ? 'flex hybrids up to R$261,154 exempt through 2026' : 'flex-hybrid exemption only up to R$261,154'; } else if (r==='MG'){ rate = c.make==='Fiat' ? 0 : 4; why = rate===0 ? 'Minas-built flex hybrids exempt' : 'only Minas-built hybrids are exempt'; } else { rate = st[2]; why = rate===0 ? 'hybrids exempt' : 'hybrid rate'; } }
+  const ipva = p => p*rate/100*4/12;
+  const ins = list * (st[5] + (BR_CN.has(c.make) && (c.fuel==='EV'||c.fuel==='PHEV') ? 0.01 : 0));
+  const f = p => p + st[3] + ipva(p);
+  const L = [];
+  L.push({k:'Preço público sugerido', sub:(r==='RJ' ? 'Rio tabela runs about 1.5% above São Paulo; ' : '') + 'IPI, PIS/COFINS, ICMS and frete are inside the price', v:M.money(list)});
+  L.push({k:'Typical price after bônus', sub:`${MKT_TXT.BR[c.mkt][0].toLowerCase()} (${pct(b)})`, v:`${M.money(lo)} – ${M.money(hi)}`, cls:'est'});
+  L.push({k:'Emplacamento', sub:'Detran registration, Mercosul plates and despachante; dealers bundle it at R$1,500 to R$3,500', v:'~'+M.money(st[3])});
+  L.push({k:'IPVA, first year', sub:`${rate}% in ${REGIONS.BR[r][0]} (${why}); prorated for a late-September purchase, then ${rate}% of the FIPE value every January`, v: rate ? `${M.money(ipva(lo))} – ${M.money(ipva(hi))}` : M.money(0)});
+  L.push({k:'Seguro obrigatório', sub:'none in 2026: DPVAT ended in 2020 and the SPVAT that replaced it was revoked', v:M.money(0)});
+  L.push({k:'Seguro compreensivo, first year', sub:`about ${Math.round(st[5]*100)}% of value here${BR_CN.has(c.make)&&(c.fuel==='EV'||c.fuel==='PHEV')?' plus a point for a Chinese EV':''}; required on financed cars`, v:'~'+M.money(ins), cls:'info'});
+  return {dlo:lo, dhi:hi, lo:f(lo), hi:f(hi), lines:L, head:REGIONS.BR[r][0]};
+}
+/* ---------- Canada ---------- */
+const CA_FREIGHT = {Toyota:2030, Lexus:2255, Honda:2000, Acura:2775, Nissan:2050, Infiniti:2395, Hyundai:2050, Kia:2150, Genesis:0, Mazda:2150, Subaru:2495, Mitsubishi:2200, Ford:2395, Lincoln:2700, Chevrolet:2300, GMC:2400, Buick:2200, Cadillac:2700, Jeep:2295, Dodge:2295, Chrysler:2295, Ram:2495, Volkswagen:2300, Audi:3150, BMW:2995, MINI:2995, 'Mercedes-Benz':3400, Volvo:2900, Polestar:2500, Porsche:2400, 'Land Rover':2500, Jaguar:2500, 'Alfa Romeo':2295, Maserati:3000, Fiat:2295, Tesla:2750, Rivian:2650, Lucid:2500, VinFast:2200};
+const CA_PROV = {ON:[0.13,'HST 13%',599,22,91,'new plates and permit; annual renewal is free',2400,0], QC:[0.14975,'GST 5% + QST 9.975%',250,0,387,'SAAQ registration incl. injury cover, Montreal transit levy and plates',900,2000], BC:[0,'GST 5% + PST 7% to 20% by price (ZEV thresholds C$20,000 higher)',695,0,36,'ICBC registration and plates; ICBC Basic insurance is bought with them',2100,0], AB:[0.05,'GST 5% only',695,6.25,93,'registration and plate',2000,0], MB:[0.12,'GST 5% + RST 7%',499,0,154,'registration; MPI Autopac Basic insurance is bought with it',1500,0], SK:[0.11,'GST 5% + PST 6%',499,0,1150,'SGI registration including basic plate insurance',1400,0], NS:[0.14,'HST 14%',499,0,90,'registration by weight',1450,0], NB:[0.15,'HST 15%',499,0,105,'registration by weight',1350,0], NL:[0.15,'HST 15%',499,0,180,'registration',1550,0], PE:[0.15,'HST 15%',499,0,120,'registration by weight',1150,4000], YT:[0.05,'GST 5% only',499,0,90,'registration',1500,5000]};
+function caTax(r, p, zev){ if (r!=='BC') return p*CA_PROV[r][0]; const t = zev ? 20000 : 0; const pst = p < 55000+t ? 0.07 : p < 56000+t ? 0.08 : p < 57000+t ? 0.09 : p < 125000 ? 0.10 : p < 150000 ? 0.15 : 0.20; return p*(0.05+pst); }
+function bdCA(c, msrp, r, M){
+  const P = CA_PROV[r]; const b = BAND.CA[c.mkt]; const lo = msrp*b[0], hi = msrp*b[1];
+  const freight = c.make in CA_FREIGHT ? CA_FREIGHT[c.make] : 2300;
+  const levy = (c.body==='Pickup' || c.l100==null) ? 0 : c.l100 < 12.5 ? 0 : c.l100 < 13.5 ? 1000 : c.l100 < 14.5 ? 2000 : c.l100 < 15.5 ? 3000 : 4000;
+  const fees = 100 + levy + P[2] + P[3] + 20;
+  const zev = c.fuel==='EV' || c.fuel==='PHEV';
+  const pre = p => p + freight + fees;
+  const lux = p => { const x = pre(p); return x <= 100000 ? 0 : Math.min(0.10*x, 0.20*(x-100000)); };
+  const fed = zev && (msrp + freight + P[2] + 100) <= 50000 ? (c.fuel==='EV' ? 5000 : 2500) : 0;
+  const prov = zev && P[7] ? (r==='QC' ? (msrp <= 65000 ? (c.fuel==='EV' ? 2000 : 1000) : 0) : (c.fuel==='EV' ? P[7] : P[7]/2)) : 0;
+  const f = p => { const x = pre(p) + lux(p); return x + caTax(r, x, zev) + P[4] - fed - prov; };
+  const L = [];
+  L.push({k:'MSRP', sub:'before freight, fees and taxes' + (c.make==='Genesis' ? '; Genesis prices already include freight and PDI' : ''), v:M.money(msrp)});
+  L.push({k:'Typical dealer price', sub:`${MKT_TXT.CA[c.mkt][0].toLowerCase()} (${pct(b)})`, v:`${M.money(lo)} – ${M.money(hi)}`, cls:'est'});
+  L.push({k:'Freight & PDI', sub:`${c.make} charge, the same at every dealer`, v:M.money(freight)});
+  L.push({k:'A/C tax, tire fee, admin fee' + (levy ? ', green levy' : ''), sub:`C$100 federal A/C excise + tire stewardship + typical ${REGIONS.CA[r][0]} admin fee${P[3]?' + regulator fee':''}${levy?` + C$${levy.toLocaleString()} green levy for a car rated 13 L/100 km or worse`:''}`, v:M.money(fees)});
+  if (lux(hi)) L.push({k:'Federal luxury tax', sub:'lesser of 10% of the price or 20% of the amount over C$100,000, taxed on top', v:`${M.money(lux(lo))} – ${M.money(lux(hi))}`});
+  L.push({k:'Sales tax', sub:P[1], v:`${M.money(caTax(r, pre(lo)+lux(lo), zev))} – ${M.money(caTax(r, pre(hi)+lux(hi), zev))}`});
+  L.push({k:'Registration and plates', sub:P[5], v:M.money(P[4])});
+  if (zev) L.push({k:'Federal EVAP rebate', sub: fed ? 'C$5,000 for a BEV or C$2,500 for a PHEV at the till when the all-in price is under C$50,000; not for Chinese-built cars; one per person' : 'only vehicles under C$50,000 all-in qualify (no cap for Canadian-assembled cars)', v: fed ? '−'+M.money(fed) : 'C$0'});
+  if (zev && prov) L.push({k:REGIONS.CA[r][0]+' rebate', sub: r==='QC' ? 'Roulez vert, ends 31 Dec 2026' : r==='PE' ? 'provincial rebate, stacks with EVAP' : 'territorial rebate, stacks with EVAP', v:'−'+M.money(prov)});
+  if (r==='QC' && msrp > (zev ? 75000 : 40000)) L.push({k:'Quebec luxury registration surcharge', sub:'1% of the value above C$40,000 (C$75,000 for plug-ins) every year for 7 years', v:'~'+M.money((msrp-(zev?75000:40000))*0.01)+'/yr', cls:'info'});
+  L.push({k:'Full-coverage insurance, first year', sub:`typical ${REGIONS.CA[r][0]} premium for a 35 to 50-year-old with a clean record`, v:'~'+M.money(P[6]), cls:'info'});
+  return {dlo:lo, dhi:hi, lo:f(lo), hi:f(hi), lines:L, head:REGIONS.CA[r][0]};
+}
+function pct(b){ const a = Math.round((b[0]-1)*100), z = Math.round((b[1]-1)*100); return `${a}% to ${z>0?'+':''}${z}%`; }
+function breakdown(cc, c, price, region, M){
+  switch(cc){ case 'US': return bdUS(c, price, usState(region), M); case 'IN': return bdIN(c, price, inState(region), M); case 'CN': return bdCN(c, price, region, M); case 'UK': return bdUK(c, price, region, M); case 'AU': return bdAU(c, price, region, M); case 'MX': return bdMX(c, price, region, M); case 'ES': return bdES(c, price, region, M); case 'TH': return bdTH(c, price, region, M); case 'RU': return bdRU(c, price, region, M); case 'BR': return bdBR(c, price, region, M); case 'CA': return bdCA(c, price, region, M); }
+}
+//core>>
+const DATA = {}; Object.keys(RAW).forEach(cc => DATA[cc] = normalize(RAW[cc], cc));
+const W_BODY = {Truck:'Pickup', Minivan:'MPV'}; const W_SIZE = {Subcompact:'Small', Entry:'City', 'Sub-4m':'Small', 'Heavy-duty':'Full-size'}; const W_FUEL = {Gas:'Petrol', Hydrogen:'EV'};
+DATA.ALL = []; ['US','CA','MX','BR','UK','ES','RU','IN','CN','TH','AU'].forEach(cc => DATA[cc].forEach(c => { const w = Object.assign({}, c, {id: DATA.ALL.length, cc, home: c, rng: c.cc==='US' && c.rng ? c.rng*1.609 : c.rng, body: W_BODY[c.body]||c.body, size: W_SIZE[c.size]||c.size, fuel: W_FUEL[c.fuel]||c.fuel, fuels: [...new Set(c.fuels.map(f=>W_FUEL[f]||f))]}); DATA.ALL.push(w); }));
+function worldPrices(){ DATA.ALL.forEach(w => { w.wprice = toWorld(w.price, w.cc); w.wtop = toWorld(w.top, w.cc); const o = breakdown(w.cc, w.home, w.price, regionDefault(w.cc), MONEY[w.cc]); w.wlo = toWorld(o.lo, w.cc); w.whi = toWorld(o.hi, w.cc); }); }
+
+/* ===== country configs ===== */
+const SIZES_G = ['City','Small','Compact','Midsize','Large','Full-size'];
+const BODY_ORDER = ['SUV','Truck','Pickup','Sedan','Hatch','MPV','Minivan','Van','Wagon','Sports','Coupe','Conv'];
+const BODY_LABEL = {Sedan:'Sedan',Hatch:'Hatchback',Coupe:'Coupe',Conv:'Convertible',Wagon:'Wagon',SUV:'SUV',Truck:'Pickup',Pickup:'Pickup',Minivan:'Minivan',MPV:'MPV',Van:'Van',Sports:'Sports car'};
+const BODY_PLURAL = {Sedan:'Sedans',Hatch:'Hatchbacks',Coupe:'Coupes',Conv:'Convertibles',Wagon:'Wagons',SUV:'SUVs',Truck:'Pickups',Pickup:'Pickups',Minivan:'Minivans',MPV:'MPVs',Van:'Vans',Sports:'Sports cars'};
+const FUEL_ORDER = ['Gas','Petrol','Diesel','CNG','LPG','Hybrid','PHEV','EV'];
+const FUEL_LABEL_G = {Gas:'Gas',Petrol:'Petrol',Diesel:'Diesel',CNG:'CNG',LPG:'LPG',Hybrid:'Hybrid',PHEV:'Plug-in hybrid',EV:'Electric',Hydrogen:'Hydrogen'};
+const COUNTRIES = {
+  US: { name:'USA', title:'USA', count:0, lede:'Every new car, SUV, pickup and van sold in the US, with sticker prices, what dealers actually charge, and your state’s taxes and fees. Filter down to what fits you.',
+    priceUnit:1, priceInputLabel:'$', priceLabel:'Sticker price (MSRP)', cardPriceLabel:'Sticker (MSRP)', otdLabel:'Est. drive-off', otdSub:'base trim, tax & fees in', trimWord:'trim',
+    statePrompt:'Pick your state (US avg)', stateShort:code=>code==='US'?'US avg':code,
+    sizes:['Subcompact','Compact','Midsize','Full-size','Heavy-duty'], fuelLabel:Object.assign({},FUEL_LABEL_G,{Hybrid:'Hybrid'}),
+    presets:[[0,30000,'Under $30k'],[30000,45000,'$30-45k'],[45000,65000,'$45-65k'],[65000,100000,'$65-100k'],[100000,0,'$100k+']],
+    eff:{mode:'min', label:'Minimum MPG', hint:'gas & hybrids; EVs always pass', max:55, step:1, unit:'mpg', sort:'Best MPG', get:c=>c.mpg},
+    rng:{max:450, step:10, unit:'mi'}, powerUnit:'hp',
+    assume:{gas:['Gas $/gal',4.45,0.05], elec:['Electricity $/kWh',0.17,0.01], miles:['Miles per year',12000,1000], apr:['Loan APR %',7.0,0.1], term:['Loan term (months)',72,12], down:['Down payment %',10,1]}, distLabel:'miles',
+    wizardBudgets:[[30000,'Under $30k'],[45000,'$30-45k'],[65000,'$45-65k'],[100000,'$65-100k'],[0,'No limit']], budgetShare:0.9,
+    wizardFuels:[['','No preference'],['Gas','Regular gas'],['Hybrid','Hybrid (no plug, best mpg)'],['PHEV','Plug-in hybrid'],['EV','Fully electric'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Snow, mud or mountains?', wizardWork:'Work, towing, hauling stuff',
+    wizardUse:{commute:{body:['Sedan','Hatch','SUV'],size:['Subcompact','Compact']}, family:{body:['SUV','Minivan'],seats:7}, work:{body:['Truck']}, fun:{body:['Sports','Coupe','Conv','Hatch','Sedan'],sort:'hp'}, trips:{body:['Sedan','SUV','Wagon'],size:['Midsize','Full-size']}, all:{body:['SUV'],size:['Compact','Midsize']}} },
+  IN: { name:'India', title:'India', lede:'Every new car, SUV, MPV and pickup sold in India, with ex-showroom prices, what dealers actually charge, and the on-road price for your state after RTO, insurance and TCS. Filter down to what fits you.',
+    priceUnit:100000, priceInputLabel:'₹ lakh', priceLabel:'Ex-showroom price (₹ lakh)', cardPriceLabel:'Ex-showroom', otdLabel:'Est. on-road', otdSub:'base variant, RTO, insurance & TCS in', trimWord:'variant',
+    statePrompt:'Pick your state (all-India typical)', stateShort:code=>code==='IN'?'India':code,
+    sizes:['Entry','Compact','Sub-4m','Midsize','Large','Full-size'], fuelLabel:Object.assign({},FUEL_LABEL_G,{Hybrid:'Strong hybrid'}),
+    presets:[[0,700000,'Under ₹7 L'],[700000,1200000,'₹7-12 L'],[1200000,2000000,'₹12-20 L'],[2000000,4000000,'₹20-40 L'],[4000000,0,'₹40 L+']],
+    eff:{mode:'min', label:'Minimum mileage (kmpl)', hint:'petrol, diesel & hybrids; EVs always pass · 20 kmpl ≈ 47 mpg', max:30, step:1, unit:'kmpl', sort:'Best mileage (kmpl)', get:c=>c.kmpl},
+    rng:{max:700, step:25, unit:'km'}, powerUnit:'PS',
+    assume:{petrol:['Petrol ₹/litre',100,1], diesel:['Diesel ₹/litre',90,1], cng:['CNG ₹/kg',78,1], elec:['Electricity ₹/kWh',8,0.5], miles:['Km per year',10000,1000], apr:['Loan rate %',9.0,0.1], term:['Loan term (months)',60,12], down:['Down payment %',15,1]}, distLabel:'km',
+    wizardBudgets:[[800000,'Under ₹8 L'],[1200000,'₹8-12 L'],[2000000,'₹12-20 L'],[4000000,'₹20-40 L'],[0,'No limit']], budgetShare:0.86,
+    wizardFuels:[['','No preference'],['Petrol','Petrol'],['Diesel','Diesel'],['CNG','CNG (cheapest per km)'],['Hybrid','Strong hybrid (no plug)'],['EV','Electric'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Hills, bad roads or off-roading?', wizardWork:'Fleet, cargo or lots of people',
+    wizardUse:{commute:{body:['Hatch','Sedan','SUV'],size:['Entry','Compact','Sub-4m']}, family:{body:['MPV','SUV'],seats:6}, work:{body:['MPV','Pickup','Van']}, fun:{body:['Sports','Coupe','Hatch','Sedan'],sort:'hp'}, trips:{body:['SUV','Sedan','MPV'],size:['Midsize','Large','Full-size']}, all:{body:['SUV'],size:['Sub-4m','Midsize']}} },
+  CN: { name:'China', title:'China', lede:'Every car, SUV, MPV and pickup on sale in China, from the Wuling Mini to the Maextro S800, with guide prices, the bare-car price dealers really charge in the price war, and the 落地价 for your city after purchase tax, insurance and plates.',
+    priceUnit:10000, priceInputLabel:'万元', priceLabel:'Guide price (万元)', cardPriceLabel:'Guide price', otdLabel:'Est. 落地价 (on-road)', otdSub:'base trim, tax, insurance & plates in', trimWord:'trim',
+    statePrompt:'Pick your city (plates vary)', stateShort:code=>code==='XX'?'most cities':REGIONS.CN[code][0],
+    sizes:SIZES_G, fuelLabel:Object.assign({},FUEL_LABEL_G,{PHEV:'Plug-in / EREV'}),
+    presets:[[0,100000,'Under ¥10万'],[100000,150000,'¥10-15万'],[150000,250000,'¥15-25万'],[250000,400000,'¥25-40万'],[400000,0,'¥40万+']],
+    eff:{mode:'max', label:'Max fuel use (L/100 km)', hint:'petrol & hybrids; EVs always pass · 6 L/100 km ≈ 39 mpg', max:15, step:0.5, unit:'L/100km', sort:'Lowest fuel use', get:c=>c.l100},
+    rng:{max:800, step:25, unit:'km'}, powerUnit:'hp',
+    assume:{petrol:['92# petrol ¥/litre',8.60,0.1], diesel:['Diesel ¥/litre',8.30,0.1], elec:['Home electricity ¥/kWh',0.55,0.05], miles:['Km per year',13000,1000], apr:['Loan APR %',3.5,0.1], term:['Loan term (months)',36,12], down:['Down payment %',30,1]}, distLabel:'km',
+    wizardBudgets:[[100000,'Under ¥10万'],[150000,'¥10-15万'],[250000,'¥15-25万'],[400000,'¥25-40万'],[0,'No limit']], budgetShare:0.9,
+    wizardFuels:[['','No preference'],['Petrol','Petrol'],['PHEV','Plug-in hybrid / EREV'],['EV','Pure electric'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Snow, mountains or off-roading?', wizardWork:'Business, family hauling or cargo',
+    wizardUse:{commute:{body:['Hatch','Sedan','SUV'],size:['City','Small','Compact']}, family:{body:['MPV','SUV'],seats:6}, work:{body:['MPV','Pickup','Van']}, fun:{body:['Sports','Coupe','Sedan'],sort:'hp'}, trips:{body:['SUV','Sedan','MPV'],size:['Midsize','Large','Full-size']}, all:{body:['SUV'],size:['Compact','Midsize']}} },
+  UK: { name:'UK', title:'UK', lede:'Every new car, SUV, MPV and pickup on sale in the UK, with OTR prices, what brokers and dealers actually charge, the Electric Car Grant, road tax and a typical first-year insurance bill.',
+    priceUnit:1, priceInputLabel:'£', priceLabel:'OTR price (£)', cardPriceLabel:'OTR price', otdLabel:'Est. drive-away', otdSub:'base trim after discount & grant', trimWord:'trim',
+    statePrompt:'Where you live (taxes are UK-wide)', stateShort:code=>code==='NI'?'NI':'UK',
+    sizes:SIZES_G, fuelLabel:FUEL_LABEL_G,
+    presets:[[0,20000,'Under £20k'],[20000,30000,'£20-30k'],[30000,45000,'£30-45k'],[45000,70000,'£45-70k'],[70000,0,'£70k+']],
+    eff:{mode:'min', label:'Minimum mpg (WLTP)', hint:'UK gallons; EVs always pass · 50 mpg UK ≈ 42 mpg US', max:80, step:1, unit:'mpg', sort:'Best mpg', get:c=>c.l100?282.48/c.l100:null},
+    rng:{max:450, step:10, unit:'mi', toKm:1.609}, powerUnit:'hp',
+    assume:{petrol:['Unleaded £/litre',1.741,0.01], diesel:['Diesel £/litre',1.992,0.01], elec:['Electricity £/kWh (0.07 on an EV tariff)',0.2632,0.01], miles:['Miles per year',7400,500], apr:['PCP / loan APR %',7.9,0.1], term:['Term (months)',48,12], down:['Deposit %',10,1]}, distLabel:'miles',
+    wizardBudgets:[[20000,'Under £20k'],[30000,'£20-30k'],[45000,'£30-45k'],[70000,'£45-70k'],[0,'No limit']], budgetShare:0.97,
+    wizardFuels:[['','No preference'],['Petrol','Petrol'],['Diesel','Diesel'],['Hybrid','Hybrid (no plug)'],['PHEV','Plug-in hybrid'],['EV','Electric'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Snow, hills or towing?', wizardWork:'Work, towing or a big load',
+    wizardUse:{commute:{body:['Hatch','Sedan','SUV'],size:['City','Small','Compact']}, family:{body:['SUV','MPV'],seats:7}, work:{body:['Pickup','Van','MPV']}, fun:{body:['Sports','Coupe','Conv','Hatch','Sedan'],sort:'hp'}, trips:{body:['Sedan','SUV','Wagon'],size:['Midsize','Large','Full-size']}, all:{body:['SUV'],size:['Small','Compact']}} },
+  AU: { name:'Australia', title:'Australia', lede:'Every new car, SUV, ute and van on sale in Australia, with RRPs before on-roads, what dealers actually charge, and the drive-away price for your state after stamp duty, rego and CTP.',
+    priceUnit:1, priceInputLabel:'A$', priceLabel:'RRP before on-roads (A$)', cardPriceLabel:'RRP', otdLabel:'Est. drive-away', otdSub:'base grade, duty, rego & CTP in', trimWord:'grade',
+    statePrompt:'Pick your state or territory', stateShort:code=>code,
+    sizes:SIZES_G, fuelLabel:FUEL_LABEL_G,
+    presets:[[0,30000,'Under A$30k'],[30000,45000,'A$30-45k'],[45000,65000,'A$45-65k'],[65000,100000,'A$65-100k'],[100000,0,'A$100k+']],
+    eff:{mode:'max', label:'Max fuel use (L/100 km)', hint:'petrol, diesel & hybrids; EVs always pass · 6 L/100 km ≈ 39 mpg', max:15, step:0.5, unit:'L/100km', sort:'Lowest fuel use', get:c=>c.l100},
+    rng:{max:700, step:25, unit:'km'}, powerUnit:'hp',
+    assume:{petrol:['Unleaded 91 A$/litre',2.35,0.05], diesel:['Diesel A$/litre',2.80,0.05], elec:['Electricity A$/kWh',0.32,0.01], miles:['Km per year',12500,500], apr:['Car loan rate %',7.7,0.1], term:['Term (months)',60,12], down:['Deposit %',10,1]}, distLabel:'km',
+    wizardBudgets:[[30000,'Under A$30k'],[45000,'A$30-45k'],[65000,'A$45-65k'],[100000,'A$65-100k'],[0,'No limit']], budgetShare:0.93,
+    wizardFuels:[['','No preference'],['Petrol','Petrol'],['Diesel','Diesel'],['Hybrid','Hybrid (no plug)'],['PHEV','Plug-in hybrid'],['EV','Electric'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Dirt roads, beach or towing?', wizardWork:'Work, towing or a tradie ute',
+    wizardUse:{commute:{body:['Hatch','Sedan','SUV'],size:['City','Small','Compact']}, family:{body:['SUV','MPV'],seats:7}, work:{body:['Pickup','Van']}, fun:{body:['Sports','Coupe','Conv','Hatch','Sedan'],sort:'hp'}, trips:{body:['SUV','Sedan','Wagon'],size:['Midsize','Large','Full-size']}, all:{body:['SUV'],size:['Small','Compact']}} },
+  MX: { name:'Mexico', title:'México', lede:'Every new car, SUV, pickup and van on sale in Mexico, with precios de lista, what dealers actually charge, and the final price for your state after placas, tenencia and holograma.',
+    priceUnit:1000, priceInputLabel:'mil MX$', priceLabel:'Precio de lista (miles de pesos)', cardPriceLabel:'Precio de lista', otdLabel:'Est. precio final', otdSub:'versión base, placas & tenencia in', trimWord:'versión',
+    statePrompt:'Pick your state (tenencia varies)', stateShort:code=>code,
+    sizes:SIZES_G, fuelLabel:FUEL_LABEL_G,
+    presets:[[0,400000,'Under MX$400k'],[400000,600000,'MX$400-600k'],[600000,900000,'MX$600-900k'],[900000,1500000,'MX$900k-1.5M'],[1500000,0,'MX$1.5M+']],
+    eff:{mode:'min', label:'Minimum rendimiento (km/L)', hint:'gasolina, diésel & híbridos; EVs always pass · 17 km/L ≈ 40 mpg', max:30, step:1, unit:'km/L', sort:'Best km/L', get:c=>c.l100?100/c.l100:null},
+    rng:{max:700, step:25, unit:'km'}, powerUnit:'hp',
+    assume:{petrol:['Magna MX$/litre',23.69,0.1], diesel:['Diesel MX$/litre',27.01,0.1], elec:['CFE electricity MX$/kWh',2.50,0.1], miles:['Km per year',15000,1000], apr:['Loan rate %',14.0,0.1], term:['Plazo (months)',60,12], down:['Enganche %',20,1]}, distLabel:'km',
+    wizardBudgets:[[400000,'Under MX$400k'],[600000,'MX$400-600k'],[900000,'MX$600-900k'],[1500000,'MX$900k-1.5M'],[0,'No limit']], budgetShare:0.97,
+    wizardFuels:[['','No preference'],['Petrol','Gasolina'],['Diesel','Diésel'],['Hybrid','Híbrido (sin enchufe)'],['PHEV','Híbrido enchufable'],['EV','Eléctrico'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Caminos de terracería, lluvia o carga pesada?', wizardWork:'Trabajo, carga o pasajeros',
+    wizardUse:{commute:{body:['Hatch','Sedan','SUV'],size:['City','Small','Compact']}, family:{body:['SUV','MPV'],seats:7}, work:{body:['Pickup','Van','MPV']}, fun:{body:['Sports','Coupe','Conv','Hatch','Sedan'],sort:'hp'}, trips:{body:['SUV','Sedan','MPV'],size:['Midsize','Large','Full-size']}, all:{body:['SUV'],size:['Small','Compact']}} },
+  ES: { name:'Spain', title:'España', lede:'Every new car, SUV, MPV and pickup on sale in Spain, with PVP de tarifa, what dealers actually charge after campaigns, Plan Auto+ and the IRPF deduction, and the final price for your region.',
+    priceUnit:1000, priceInputLabel:'mil €', priceLabel:'PVP (miles de euros)', cardPriceLabel:'PVP', otdLabel:'Est. precio final', otdSub:'versión base, matriculación in', trimWord:'versión',
+    statePrompt:'Pick your region', stateShort:code=>code==='PEN'?'ES':code,
+    sizes:SIZES_G, fuelLabel:FUEL_LABEL_G,
+    presets:[[0,20000,'Under €20k'],[20000,30000,'€20-30k'],[30000,45000,'€30-45k'],[45000,70000,'€45-70k'],[70000,0,'€70k+']],
+    eff:{mode:'max', label:'Max consumo (L/100 km)', hint:'gasolina, diésel & híbridos; EVs always pass · 6 L/100 km ≈ 39 mpg', max:15, step:0.5, unit:'L/100km', sort:'Lowest fuel use', get:c=>c.l100},
+    rng:{max:700, step:25, unit:'km'}, powerUnit:'CV',
+    assume:{petrol:['Gasolina 95 €/litre',1.93,0.01], diesel:['Diésel €/litre',1.93,0.01], elec:['Electricity €/kWh (0.08 at night)',0.15,0.01], miles:['Km per year',12500,500], apr:['TAE %',8.0,0.1], term:['Plazo (months)',60,12], down:['Entrada %',15,1]}, distLabel:'km',
+    wizardBudgets:[[20000,'Under €20k'],[30000,'€20-30k'],[45000,'€30-45k'],[70000,'€45-70k'],[0,'No limit']], budgetShare:0.97,
+    wizardFuels:[['','No preference'],['Petrol','Gasolina'],['Diesel','Diésel'],['Hybrid','Híbrido (etiqueta ECO)'],['PHEV','Híbrido enchufable (CERO)'],['EV','Eléctrico'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Nieve, montaña o caminos?', wizardWork:'Trabajo, carga o muchos pasajeros',
+    wizardUse:{commute:{body:['Hatch','Sedan','SUV'],size:['City','Small','Compact']}, family:{body:['SUV','MPV'],seats:7}, work:{body:['Pickup','Van','MPV']}, fun:{body:['Sports','Coupe','Conv','Hatch','Sedan'],sort:'hp'}, trips:{body:['Sedan','SUV','Wagon'],size:['Midsize','Large','Full-size']}, all:{body:['SUV'],size:['Small','Compact']}} },
+  TH: { name:'Thailand', title:'Thailand', lede:'Every new car, SUV, pickup and MPV on sale in Thailand, with ราคาป้าย retail prices, what dealers actually charge (and give away), and the on-road price after registration, annual tax and พ.ร.บ.',
+    priceUnit:1000, priceInputLabel:'thousand ฿', priceLabel:'Retail price (thousand baht)', cardPriceLabel:'Retail price', otdLabel:'Est. on-road', otdSub:'base grade, registration, tax & พ.ร.บ. in', trimWord:'grade',
+    statePrompt:'Thailand (same taxes nationwide)', stateShort:code=>'TH',
+    sizes:SIZES_G, fuelLabel:FUEL_LABEL_G,
+    presets:[[0,700000,'Under ฿700k'],[700000,1000000,'฿700k-1M'],[1000000,1500000,'฿1-1.5M'],[1500000,3000000,'฿1.5-3M'],[3000000,0,'฿3M+']],
+    eff:{mode:'min', label:'Minimum km/L (Eco Sticker)', hint:'petrol, diesel & hybrids; EVs always pass · 17 km/L ≈ 40 mpg', max:30, step:1, unit:'km/L', sort:'Best km/L', get:c=>c.l100?100/c.l100:null},
+    rng:{max:700, step:25, unit:'km'}, powerUnit:'hp',
+    assume:{petrol:['E20 gasohol ฿/litre',34.94,0.5], diesel:['Diesel B7 ฿/litre',41.44,0.5], elec:['Electricity ฿/kWh (3.0 on TOU)',4.2,0.1], miles:['Km per year',15000,1000], apr:['Effective loan rate % (2.99% flat ≈ 5.5%)',5.5,0.1], term:['Term (months)',60,12], down:['Down payment %',15,1]}, distLabel:'km',
+    wizardBudgets:[[700000,'Under ฿700k'],[1000000,'฿700k-1M'],[1500000,'฿1-1.5M'],[3000000,'฿1.5-3M'],[0,'No limit']], budgetShare:0.97,
+    wizardFuels:[['','No preference'],['Petrol','Petrol / gasohol'],['Diesel','Diesel'],['Hybrid','Hybrid (no plug)'],['PHEV','Plug-in hybrid'],['EV','Electric'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Upcountry roads, floods or off-roading?', wizardWork:'Work, cargo or a pickup',
+    wizardUse:{commute:{body:['Hatch','Sedan','SUV'],size:['City','Small','Compact']}, family:{body:['MPV','SUV'],seats:7}, work:{body:['Pickup','Van','MPV']}, fun:{body:['Sports','Coupe','Conv','Hatch','Sedan'],sort:'hp'}, trips:{body:['SUV','Sedan','MPV'],size:['Midsize','Large','Full-size']}, all:{body:['SUV'],size:['Small','Compact']}} },
+  RU: { name:'Russia', title:'Russia', lede:'Every car officially sold new in Russia, from the Lada Granta to the Aurus Senat, with recommended prices, the price after the benefits dealers really give, and the drive-away cost for your region after registration, ОСАГО and add-ons.',
+    priceUnit:1000, priceInputLabel:'thousand ₽', priceLabel:'Recommended price (thousand ₽)', cardPriceLabel:'Recommended price', otdLabel:'Est. drive-away', otdSub:'base trim after benefits, add-ons, ГИБДД & ОСАГО in', trimWord:'trim',
+    statePrompt:'Pick your region (Moscow default)', stateShort:code=>code==='XX'?'RU':REGIONS.RU[code][0].split(' ')[0],
+    sizes:SIZES_G, fuelLabel:Object.assign({},FUEL_LABEL_G,{PHEV:'Plug-in / EREV'}),
+    presets:[[0,1500000,'Under 1.5 M ₽'],[1500000,2500000,'1.5-2.5 M ₽'],[2500000,4000000,'2.5-4 M ₽'],[4000000,7000000,'4-7 M ₽'],[7000000,0,'7 M ₽+']],
+    eff:{mode:'max', label:'Max fuel use (L/100 km)', hint:'petrol & hybrids; EVs always pass · 6 L/100 km ≈ 39 mpg', max:15, step:0.5, unit:'L/100km', sort:'Lowest fuel use', get:c=>c.l100},
+    rng:{max:700, step:25, unit:'km'}, powerUnit:'hp',
+    assume:{petrol:['АИ-92 ₽/litre',69.98,0.5], diesel:['Diesel ₽/litre',81.25,0.5], elec:['Electricity ₽/kWh',8.0,0.5], miles:['Km per year',17000,1000], apr:['Loan APR %',23.6,0.1], term:['Term (months)',60,12], down:['Down payment %',20,1]}, distLabel:'km',
+    wizardBudgets:[[1500000,'Under 1.5 M ₽'],[2500000,'1.5-2.5 M ₽'],[4000000,'2.5-4 M ₽'],[7000000,'4-7 M ₽'],[0,'No limit']], budgetShare:0.93,
+    wizardFuels:[['','No preference'],['Petrol','Petrol'],['Diesel','Diesel'],['PHEV','Plug-in hybrid / EREV'],['EV','Electric'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Snow, mud or off-roading?', wizardWork:'Work, cargo or many passengers',
+    wizardUse:{commute:{body:['Hatch','Sedan','SUV'],size:['City','Small','Compact']}, family:{body:['SUV','MPV'],seats:7}, work:{body:['Pickup','Van','MPV']}, fun:{body:['Sports','Coupe','Sedan'],sort:'hp'}, trips:{body:['SUV','Sedan','Wagon'],size:['Midsize','Large','Full-size']}, all:{body:['SUV'],size:['Small','Compact']}} },
+  BR: { name:'Brazil', title:'Brasil', lede:'Every new car, SUV, picape and van on sale in Brazil, with preços de tabela, what dealers actually charge after bônus, and the final price for your state after emplacamento and IPVA.',
+    priceUnit:1000, priceInputLabel:'mil R$', priceLabel:'Preço de tabela (mil reais)', cardPriceLabel:'Preço de tabela', otdLabel:'Est. preço final', otdSub:'versão base, emplacamento & IPVA in', trimWord:'versão',
+    statePrompt:'Pick your state (São Paulo default)', stateShort:code=>code,
+    sizes:SIZES_G, fuelLabel:Object.assign({},FUEL_LABEL_G,{Petrol:'Flex / petrol'}),
+    presets:[[0,100000,'Under R$100k'],[100000,150000,'R$100-150k'],[150000,250000,'R$150-250k'],[250000,400000,'R$250-400k'],[400000,0,'R$400k+']],
+    eff:{mode:'min', label:'Minimum km/L (gasolina, INMETRO)', hint:'flex, diesel & híbridos; EVs always pass · 13 km/L ≈ 31 mpg', max:30, step:1, unit:'km/L', sort:'Best km/L', get:c=>c.l100?100/c.l100:null},
+    rng:{max:700, step:25, unit:'km'}, powerUnit:'cv',
+    assume:{petrol:['Gasolina R$/litre',6.59,0.05], diesel:['Diesel S10 R$/litre',7.05,0.05], elec:['Electricity R$/kWh (0.80 tarifa branca)',1.00,0.05], miles:['Km per year',13000,1000], apr:['Loan rate % a year (CET)',26,0.5], term:['Prazo (months)',60,12], down:['Entrada %',25,1]}, distLabel:'km',
+    wizardBudgets:[[100000,'Under R$100k'],[150000,'R$100-150k'],[250000,'R$150-250k'],[400000,'R$250-400k'],[0,'No limit']], budgetShare:0.95,
+    wizardFuels:[['','No preference'],['Petrol','Flex (gasolina/etanol)'],['Diesel','Diesel'],['Hybrid','Híbrido (sem tomada)'],['PHEV','Híbrido plug-in'],['EV','Elétrico'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Estrada de terra, fazenda ou off-road?', wizardWork:'Trabalho, carga ou muita gente',
+    wizardUse:{commute:{body:['Hatch','Sedan','SUV'],size:['City','Small','Compact']}, family:{body:['SUV','MPV'],seats:7}, work:{body:['Pickup','Van','MPV']}, fun:{body:['Sports','Coupe','Conv','Hatch','Sedan'],sort:'hp'}, trips:{body:['SUV','Sedan','MPV'],size:['Midsize','Large','Full-size']}, all:{body:['SUV'],size:['Small','Compact']}} },
+  CA: { name:'Canada', title:'Canada', lede:'Every new car, SUV, pickup and van on sale in Canada, with MSRPs before freight, what dealers actually charge, and the drive-away price for your province after freight & PDI, fees, sales tax, rebates and registration.',
+    priceUnit:1, priceInputLabel:'C$', priceLabel:'MSRP before freight (C$)', cardPriceLabel:'MSRP', otdLabel:'Est. drive-away', otdSub:'base trim, freight, fees, tax & rebates in', trimWord:'trim',
+    statePrompt:'Pick your province (Ontario default)', stateShort:code=>code,
+    sizes:SIZES_G, fuelLabel:FUEL_LABEL_G,
+    presets:[[0,30000,'Under C$30k'],[30000,45000,'C$30-45k'],[45000,65000,'C$45-65k'],[65000,100000,'C$65-100k'],[100000,0,'C$100k+']],
+    eff:{mode:'max', label:'Max fuel use (L/100 km, NRCan)', hint:'gas, diesel & hybrids; EVs always pass · 6 L/100 km ≈ 39 mpg', max:15, step:0.5, unit:'L/100km', sort:'Lowest fuel use', get:c=>c.l100},
+    rng:{max:700, step:25, unit:'km'}, powerUnit:'hp',
+    assume:{petrol:['Regular gas C$/litre',1.89,0.01], diesel:['Diesel C$/litre',2.64,0.01], elec:['Electricity C$/kWh (0.03 Ontario overnight)',0.12,0.01], miles:['Km per year',15000,1000], apr:['Loan APR %',6.99,0.1], term:['Term (months)',72,12], down:['Down payment %',10,1]}, distLabel:'km',
+    wizardBudgets:[[30000,'Under C$30k'],[45000,'C$30-45k'],[65000,'C$45-65k'],[100000,'C$65-100k'],[0,'No limit']], budgetShare:0.84,
+    wizardFuels:[['','No preference'],['Petrol','Gas'],['Diesel','Diesel'],['Hybrid','Hybrid (no plug)'],['PHEV','Plug-in hybrid'],['EV','Electric'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Snow, cottage roads or towing?', wizardWork:'Work, towing or hauling stuff',
+    wizardUse:{commute:{body:['Hatch','Sedan','SUV'],size:['City','Small','Compact']}, family:{body:['SUV','MPV','Minivan'],seats:7}, work:{body:['Pickup','Van']}, fun:{body:['Sports','Coupe','Conv','Hatch','Sedan'],sort:'hp'}, trips:{body:['SUV','Sedan','Wagon'],size:['Midsize','Large','Full-size']}, all:{body:['SUV'],size:['Small','Compact']}} },
+  ALL: { name:'World', title:'World', lede:'Every car in all eleven markets in one list, with prices converted to one currency so you can rank the best value anywhere: cheapest per horsepower, longest range, lowest running cost. Each car keeps its home-market taxes and discounts.',
+    priceUnit:1, priceInputLabel:'', priceLabel:'List price', cardPriceLabel:'List price', otdLabel:'Est. on-road', otdSub:'home market, base trim, converted', trimWord:'trim',
+    statePrompt:'US dollars (USD)', stateShort:code=>code,
+    sizes:SIZES_G, fuelLabel:FUEL_LABEL_G,
+    presets:[[0,20000,'Under 20k'],[20000,35000,'20-35k'],[35000,50000,'35-50k'],[50000,80000,'50-80k'],[80000,0,'80k+']],
+    eff:{mode:'max', label:'Max fuel use (L/100 km)', hint:'gas & hybrids; EVs always pass · 6 L/100 km ≈ 39 mpg', max:15, step:0.5, unit:'L/100km', sort:'Lowest fuel use', get:c=>c.l100},
+    rng:{max:800, step:25, unit:'km'}, powerUnit:'hp',
+    assume:{}, distLabel:'km',
+    wizardBudgets:[[20000,'Under 20k'],[35000,'20-35k'],[50000,'35-50k'],[80000,'50-80k'],[0,'No limit']], budgetShare:0.9,
+    wizardFuels:[['','No preference'],['Petrol','Gas / petrol'],['Diesel','Diesel'],['Hybrid','Hybrid (no plug)'],['PHEV','Plug-in hybrid'],['EV','Electric'],['cheap','Whatever costs least to run']],
+    wizardAwd:'Snow, mud or mountains?', wizardWork:'Work, towing or hauling stuff',
+    wizardUse:{commute:{body:['Hatch','Sedan','SUV'],size:['City','Small','Compact','Subcompact','Entry','Sub-4m']}, family:{body:['SUV','MPV','Minivan'],seats:7}, work:{body:['Pickup','Truck','Van']}, fun:{body:['Sports','Coupe','Conv','Hatch','Sedan'],sort:'hp'}, trips:{body:['SUV','Sedan','Wagon','MPV'],size:['Midsize','Large','Full-size']}, all:{body:['SUV'],size:['Compact','Small','Midsize']}} }
+};
+const ORDER = ['ALL','US','CA','MX','BR','UK','ES','RU','IN','CN','TH','AU'];
+const CC_NAME = {US:'USA', IN:'India', CN:'China', UK:'UK', AU:'Australia', MX:'Mexico', ES:'Spain', TH:'Thailand', RU:'Russia', BR:'Brazil', CA:'Canada'};
+const WORLD_UNITS = {mpg:{mode:'min', label:'Minimum mpg (US)', hint:'gas & hybrids; EVs always pass', max:60, step:1, unit:'mpg', sort:'Best mpg', get:c=>c.l100?235.215/c.l100:null, rng:{max:500, step:10, unit:'mi'}}, l100:{mode:'max', label:'Max fuel use (L/100 km)', hint:'gas & hybrids; EVs always pass · 6 L/100 km ≈ 39 mpg', max:15, step:0.5, unit:'L/100km', sort:'Lowest fuel use', get:c=>c.l100, rng:{max:800, step:25, unit:'km'}}, kml:{mode:'min', label:'Minimum km/L', hint:'gas & hybrids; EVs always pass', max:30, step:1, unit:'km/L', sort:'Best km/L', get:c=>c.l100?100/c.l100:null, rng:{max:800, step:25, unit:'km'}}};
+let WUNIT = 'l100';
+function applyWorldUnits(){ const u = WORLD_UNITS[WUNIT]; COUNTRIES.ALL.eff = {mode:u.mode, label:u.label, hint:u.hint, max:u.max, step:u.step, unit:u.unit, sort:u.sort, get:u.get}; COUNTRIES.ALL.rng = u.rng; }
+const DEF_A = {}; Object.keys(COUNTRIES).forEach(cc => { DEF_A[cc] = {}; Object.entries(COUNTRIES[cc].assume).forEach(([k,[l,d]]) => DEF_A[cc][k] = d); });
+function regionsFor(cc){
+  if (cc==='ALL') return Object.keys(FX).filter(k=>k!=='USD').map(k=>[k, `${CUR_NAME[k]} (${k})`]);
+  if (cc==='US') return Object.keys(STATES_US).filter(k=>k!=='US').sort((a,b)=>STATES_US[a][0].localeCompare(STATES_US[b][0])).map(k=>[k, `${STATES_US[k][0]} · ${STATES_US[k][1]}% tax`]);
+  if (cc==='IN') return Object.keys(STATES_IN).filter(k=>k!=='IN').sort((a,b)=>{ if (a==='BH') return 1; if (b==='BH') return -1; return STATES_IN[a].name.localeCompare(STATES_IN[b].name); }).map(k=>[k, STATES_IN[k].name]);
+  return Object.keys(REGIONS[cc]).filter(k=>k!==REGION_DEFAULT[cc]).map(k=>[k, REGIONS[cc][k][0]]);
+}
+function regionDefault(cc){ return cc==='US' ? 'US' : cc==='IN' ? 'IN' : REGION_DEFAULT[cc]; }
+function regionOf(c){ return regionDefault(c.cc); }
+function regionName(cc, code){ if (cc==='ALL') return 'prices in '+CUR_NAME[WCUR]; if (cc==='US') return usState(code).name; if (cc==='IN') return inState(code).name; return (REGIONS[cc][code]||REGIONS[cc][REGION_DEFAULT[cc]])[0]; }
+/* World tab: price presets and wizard budgets follow the chosen currency (rounded to two significant figures) */
+const WORLD_PRESETS_USD = [[0,20000],[20000,35000],[35000,50000],[50000,80000],[80000,0]];
+function sig2(x){ if (!x) return 0; const m = Math.pow(10, Math.floor(Math.log10(x)) - 1); return Math.round(x/m)*m; }
+function worldPresets(){
+  const cv = v => sig2(v*FX[WCUR]); const K = MONEY.ALL;
+  COUNTRIES.ALL.presets = WORLD_PRESETS_USD.map(([a,b]) => [cv(a), cv(b), !a ? 'Under '+K.k(cv(b)) : !b ? K.k(cv(a))+'+' : K.range(cv(a), cv(b))]);
+  COUNTRIES.ALL.wizardBudgets = [[20000,'Under '+K.k(cv(20000))],[35000,K.range(cv(20000),cv(35000))],[50000,K.range(cv(35000),cv(50000))],[80000,K.range(cv(50000),cv(80000))],[0,'No limit']];
+  COUNTRIES.ALL.priceInputLabel = WCUR; COUNTRIES.ALL.priceLabel = 'List price ('+WCUR+')';
+}
+
+/* ===== glossaries and footers ===== */
+const GLOSS = {
+  US: [['MSRP / sticker price','The manufacturer’s suggested retail price. It is a starting point, not the law. Dealers can sell above or below it.'],['Destination charge','A fixed shipping fee every buyer pays on top of MSRP, usually $1,100 to $2,200. It is printed on the window sticker and is not negotiable.'],['Trim','The equipment level. A base trim is the cheapest version; higher trims add features and thousands of dollars. This page shows the base-to-top spread.'],['Market adjustment / dealer markup','Extra money a dealer adds above sticker on high-demand models. Legal, but negotiable, and another dealer may not charge it.'],['Incentives and rebates','Money the manufacturer takes off the price, or cheap financing, to move slow-selling models. They change monthly and are listed on the brand’s website.'],['Doc fee','A dealer’s paperwork fee. Some states cap it (California $85, New York $175); others let dealers charge $800 or more. Ask about it before you agree on a price.'],['Out-the-door / drive-off price','Everything you pay: vehicle price, destination, dealer fees, sales tax, title and registration. Always negotiate on this number, not the monthly payment.'],['Hybrid','A gas engine helped by a small battery you never plug in. Better mpg, especially in town, with no change in how you fuel it.'],['Plug-in hybrid (PHEV)','A hybrid with a bigger battery you charge at home. Drives 20 to 55 miles on electricity, then runs as a normal hybrid, so there is no range worry.'],['EV range','How far an electric car goes on a full charge under the EPA test. Expect 10% to 30% less in winter or at highway speeds.'],['MPGe','Miles per gallon equivalent. How far an EV goes on the energy in one gallon of gas (33.7 kWh). Higher means cheaper to run.'],['AWD vs 4WD','Both send power to all four wheels. AWD works automatically and suits snow and rain; 4WD is the heavier truck-style system for off-road use.'],['Leftover model year','Last year’s model still sitting new on a lot. Dealers discount them heavily, especially when the model was discontinued.']],
+  IN: [['Ex-showroom price','The price the manufacturer publishes, including GST. It is what the dealer bills you for the car itself, before road tax, insurance and registration.'],['On-road price','Ex-showroom plus RTO road tax, registration, insurance, TCS and any accessories. This is the number you actually pay, so negotiate on it, not on the EMI.'],['Road tax (RTO)','A one-time state tax, usually 6% to 18% of ex-showroom, that varies by state, price slab and fuel. Karnataka, Kerala and Tamil Nadu are highest; Gujarat lowest. Most states waive it for EVs.'],['GST slabs (since 22 Sept 2025)','18% on small cars (petrol up to 1.2 L or diesel up to 1.5 L, under 4 m long), 40% on everything bigger, 5% on electric cars.'],['TCS (1%)','Tax Collected at Source on cars above ₹10 lakh. The dealer collects 1% and deposits it against your PAN; you adjust it against your income tax.'],['Insurance','Dealers bundle one year of comprehensive cover with three years of third-party cover. Dealer quotes are often 20% to 40% above the same policy online.'],['Handling / logistics charges','A fee some dealers add at delivery. Courts have ruled it illegal to charge separately; ask for it to be removed.'],['Sub-4m','Cars under 4 metres long qualify for the 18% GST slab if the engine is small enough. That is why so many Indian SUVs and sedans are exactly 3.99 m.'],['kmpl (ARAI mileage)','Kilometres per litre from the ARAI test cycle. Real-world city figures run 15% to 25% lower. For CNG the figure is km per kg.'],['CNG','Factory CNG cars cost about ₹1 lakh more and lose boot space, but run at roughly half the per-km cost of petrol.'],['Strong hybrid','A petrol engine plus a battery that can move the car on its own at low speeds. No plug; 25 to 28 kmpl in the Grand Vitara, Hyryder and Victoris.'],['Waiting period','Popular models are sold before they are built. Booking at more than one dealer is common.'],['BH series registration','Bharat-series plates for government, PSU and multi-state company employees; road tax paid every two years and the car moves between states without re-registration.'],['Bharat NCAP / Global NCAP','Crash-test ratings out of five stars. Most new Tata, Mahindra, Skoda-VW, Hyundai and Kia models score four or five.']],
+  CN: [['指导价 (guide price)','The manufacturer’s list price including 13% VAT and consumption tax. Every site quotes it; almost nobody pays it on a petrol car.'],['裸车价 (bare-car price)','What you actually pay the dealer for the car after discount, before tax, insurance and plates. Get it in writing.'],['落地价 (on-road price)','Bare-car price plus purchase tax, insurance, registration and, in Shanghai, the plate auction. The number to compare across dealers.'],['购置税 (purchase tax)','10% of the ex-VAT price. NEVs pay half (5%) in 2026-27, with the reduction capped at ¥15,000, so cars over ¥339,000 save exactly ¥15,000.'],['交强险 / 商业险','Compulsory third-party insurance (¥950 a year) and the optional commercial policy every financed car needs (¥2,500 to ¥7,000 in year one).'],['绿牌 / 蓝牌','Green NEV plate versus the blue plate for petrol, diesel and hybrid cars. Green plates dodge most city restrictions and, in most cities, cost nothing.'],['拍牌 / 摇号','Plate auction (Shanghai, Guangzhou, Shenzhen, Hangzhou, Tianjin) or lottery (Beijing). A Shanghai plate cost about ¥94,000 in September 2026.'],['以旧换新 (trade-in subsidy)','National scheme paying 6% to 12% of the new car’s price (capped at ¥13,000 to ¥20,000) when you scrap or trade in an old car. Paid to your bank account afterwards.'],['CLTC','China’s official EV range cycle. Optimistic: expect 65% to 80% of the figure in real use, less in winter.'],['增程 (EREV)','Range-extender EV: electric drive with a petrol generator (Li Auto, AITO, Leapmotor). Taxed and plated like a plug-in hybrid.'],['DM-i / EM-i / Hi4 / C-DM','BYD, Geely, Great Wall and Chery plug-in hybrid systems. 亏电油耗 is the fuel use with a flat battery, the honest number.'],['4S店 vs 直营','Franchised dealer (negotiate hard) versus a brand-run store with fixed prices (Tesla, Xiaomi, NIO, Li Auto, AITO).'],['BaaS','NIO/Onvo battery-as-a-service: buy the car without the battery and rent it monthly.'],['金融服务费 / 出库费','Dealer finance-service and release fees. Not statutory; refuse them.']],
+  UK: [['OTR (on the road)','The all-in price you drive away for: VAT, delivery, plates, the £55 registration fee and first-year road tax. The only price to compare.'],['List price / P11D','The manufacturer’s price with VAT but without the £55 fee and first-year VED. Used for the £40k/£50k supplement test, the £37k grant cap and company-car tax.'],['VED (road tax)','A CO2-based first-year charge inside the OTR price, then £200 a year from year two.'],['Expensive Car Supplement','An extra £440 a year in years two to six for cars listed over £40,000 (£50,000 for EVs). Options can tip a car over the line.'],['Electric Car Grant','£1,500 or £3,750 the dealer takes off an eligible sub-£37,000 EV from a maker on the scheme. Tesla, BYD, MG and most Chinese brands are not on it.'],['BIK (benefit-in-kind)','The income tax a company-car driver pays on a percentage (4% EV to 37% thirsty petrol) of the P11D value.'],['PCP','Pay a deposit and 3 to 4 years of monthly payments, then pay the balloon to keep the car, hand it back, or trade in.'],['GFV / balloon','The Guaranteed Future Value at the end of a PCP: what you pay to own it outright.'],['PCH (leasing)','A straight lease; you never own the car. Usually the cheapest monthly route into an EV.'],['Target Price / Carwow price','The realistic discounted price brokers achieve, usually 5% to 15% under OTR.'],['Pre-reg car','A brand-new car the dealer has already registered to hit targets, sold 15% to 30% off as "used" with a few miles on it.'],['Plate change (26 / 76 plate)','New registration letters on 1 March and 1 September; the fortnights before each quarter-end are the best time to haggle.'],['WLTP','The official lab test behind the mpg, CO2 and range figures. Real-world EV range is typically 10% to 25% lower.'],['NCB','No-claims bonus: years without an insurance claim. It is why young or new drivers pay so much more.']],
+  AU: [['RRP / before on-roads','The manufacturer’s list price including GST and Luxury Car Tax but excluding stamp duty, rego, CTP, plates and dealer delivery.'],['Drive-away','The total you hand over: RRP plus all on-road costs for your postcode. Advertised drive-away deals usually waive dealer delivery.'],['On-road costs (ORC)','Stamp duty + registration + CTP + plates + dealer delivery, typically 5% to 8% of RRP.'],['Stamp duty','A one-off state tax on the purchase price, 2% to 9% depending on the state, price, engine and emissions.'],['Rego','The annual state registration fee. It includes CTP everywhere except NSW, where the green slip is bought separately.'],['CTP / green slip / TAC','Compulsory third-party injury insurance, named differently in each state. It does not cover damage to cars.'],['LCT (Luxury Car Tax)','33% on the part of the price above A$80,809 (A$91,661 for cars using 3.5 L/100 km or less). Already inside the RRP; utes are exempt.'],['Dealer delivery','A dealer fee of A$1,500 to A$3,000 for preparing the car. Negotiable; ask for it to be waived first.'],['Novated lease','A salary-packaging lease through your employer. EVs under A$91,661 are FBT-exempt, which cuts the real cost 20% to 40%.'],['NVES','The New Vehicle Efficiency Standard: fleet CO2 targets that fine makers A$100 per gram over. It is why hybrids and EVs get cheaper and V8s dearer.'],['ADR 81/02 fuel figure','The official combined L/100 km on the windscreen label. Real use is 15% to 30% higher.'],['ANCAP','The local five-star crash rating; some fleets require 5 stars.'],['Run-out','Stock of a model being replaced, sold at a discount. Check the build date: a 2025-built car is worth less at trade-in.'],['Cab-chassis vs pick-up','Ute body styles; cab-chassis prices exclude the tray (A$1,500 to A$4,000).']],
+  MX: [['Precio de lista','The brand’s published price; already includes IVA and ISAN; excludes placas, tenencia and insurance.'],['IVA','16% value-added tax, inside every list price.'],['ISAN','Federal new-car tax of 2% to 17% on the pre-tax price, hidden in the list price. Cars under about MX$414,000, all EVs and all hybrids pay none.'],['Tenencia','Annual state ownership tax, 3% of the pre-IVA value, depreciating each year. Abolished in half the states and subsidised for cars under MX$638,000 in CDMX and Edomex.'],['Refrendo','The yearly plate-renewal fee (MX$700 to MX$4,100 by state) paid January to March. Paying on time unlocks the tenencia subsidy.'],['Alta de placas / tarjeta de circulación','First registration and the registration card: MX$972 in CDMX, MX$1,194 in Edomex, within 30 days.'],['Verificación / holograma','The twice-yearly emissions test in the Megalópolis; 00 = new car exempt two years, E = electric or hybrid exempt forever.'],['Hoy No Circula','The weekday driving ban by plate digit in CDMX and Edomex; holograms 00, 0 and E are exempt.'],['Enganche','Down payment, usually 10% to 20%.'],['CAT','Costo Anual Total: the all-in annualised cost of a loan (interest, fees, insurance), typically 19% to 26%. Compare this, not the rate.'],['Bono / precio especial','Manufacturer or dealer cash discount, often conditional on financing with the captive lender.'],['Cobertura amplia / limitada','Comprehensive versus theft-and-liability insurance; lenders require amplia.'],['Gestoría','The dealer’s paperwork fee for plating the car; optional and negotiable.'],['Rendimiento (km/L)','Fuel economy from the CONUEE Ecovehículos label; 20 km/L = 5.0 L/100 km.']],
+  ES: [['PVP recomendado / tarifa','The manufacturer’s list price including IVA and impuesto de matriculación, before campaign discounts.'],['Precio promocional / campaña','The advertised price after brand and dealer discounts, usually conditional on financing or a trade-in.'],['Impuesto de matriculación','One-off registration tax of 0 / 4.75 / 9.75 / 14.75% of the ex-IVA price by WLTP CO2 band; lower in Canarias, zero in Ceuta and Melilla.'],['IVA / IGIC / IPSI','21% on the Península and Baleares; Canarias uses IGIC (9.5% / 15%, 0% for EVs); Ceuta and Melilla use the lower IPSI.'],['IVTM / impuesto de circulación','Annual town-hall tax by caballos fiscales, €20 to €224 a year, 50% to 75% off for CERO/ECO cars in most cities.'],['Etiqueta DGT (0 / ECO / C / B)','The environmental sticker that decides ZBE access, parking discounts and tax bonuses. CERO for EVs and long-range PHEVs, ECO for hybrids and gas.'],['ZBE','The low-emission zone every city over 50,000 people must run. No-label cars are already banned in Madrid and Barcelona; B labels are next.'],['Plan Auto+','The 2026 state EV/PHEV aid of up to €4,500, paid by IDAE after purchase, with a €45,000 ex-tax price cap and a mandatory €1,000 dealer discount.'],['Deducción IRPF del 15%','Income-tax credit of 15% of the price (base up to €20,000, so up to €3,000) for an electrified car bought by 31 Dec 2026.'],['Tasa DGT y gestoría','The €99.77 registration fee plus €100 to €300 for the agent who files the paperwork; dealers bill them as gastos de matriculación.'],['Descuento por financiación','An extra discount granted only if you take the brand’s loan for a minimum amount and term.'],['Km 0','A car already registered by the dealer (0 to 500 km) sold at a big discount; you are the second owner on paper.'],['Cuota final / valor futuro garantizado','PCP-style finance with low monthly payments and a large final balloon.'],['TIN vs TAE','Nominal rate versus the all-in annual rate including fees; always compare TAE.']],
+  RU: [['РРЦ (recommended price)','The maker\u2019s list price including 20% VAT; every discount is quoted from it and imported cars carry the utilisation fee and duty inside it.'],['Выгода / прямая скидка','The direct discount the maker or dealer gives anyone; often 5% to 15% of the РРЦ.'],['Скидка по трейд-ин / по кредиту','Extra discounts only if you trade in a car or finance through the captive bank; the 0.01% rate is paid for inside the price.'],['Допы','Dealer-installed extras (mats, film, alarm) the salesman bundles; illegal to force, hard to avoid on hot models, 30,000 to 500,000 ₽.'],['Утильсбор','The recycling fee every importer pays per car, 0.8 to 2.5 M ₽ on imported models and rising every January; refunded to Russian plants.'],['Госпрограмма (льготный автокредит)','State programme paying 20% (25% in the Far East) of the price on a loan for eligible buyers of Russian-built cars, 35% up to 925,000 ₽ for Russian-built EVs.'],['ОСАГО','Compulsory third-party insurance you must hold to register; 6,000 to 12,000 ₽ a year for a typical driver, more in Moscow and Chelyabinsk.'],['КАСКО','Optional comprehensive cover; banks require it on financed cars; 3.5% to 7% of value a year.'],['Транспортный налог','Annual regional tax per horsepower, billed the following year; from 0 ₽/hp in Sverdlovsk to 150 ₽/hp for 250+ hp cars.'],['Повышающий коэффициент','The ×3 transport-tax multiplier for cars on the 10 M ₽+ list.'],['Госпошлина / ГИБДД / СТС / ЭПТС','The 4,500 ₽ state duty for registration, the registration card and the electronic vehicle passport.'],['КБМ','Your no-claims class in ОСАГО: 1.17 for a new driver, 0.46 after about 10 clean years.'],['Параллельный импорт','Grey import of brands with no official importer (Toyota, BMW, Zeekr): no factory warranty, full utilisation fee; not listed here.'],['Локализация','Localisation points a Russian-assembled model needs for utilisation-fee refunds and state-loan eligibility.']],
+  BR: [['Preço público sugerido / tabela','The brand\u2019s published São Paulo price with IPI, PIS/COFINS, ICMS and frete inside; the ceiling you negotiate down from.'],['Bônus de fábrica / preço promocional','The manufacturer\u2019s monthly cash discount (R$5,000 to R$50,000) that the dealer must pass on.'],['Venda direta (CNPJ, PcD, taxista)','Direct-sales channels 10% to 30% under retail; PcD and taxi buyers also get IPI and ICMS exemptions.'],['IPI Verde / Carro Sustentável','The federal excise inside the price, 0% to 20% by fuel, power and efficiency; 0% for national 1.0 compacts through 2026.'],['ICMS','State VAT (12% on cars in São Paulo and most states), inside the price and the reason it differs by state.'],['Emplacamento','First registration, Mercosul plates and the despachante: R$700 to R$1,700 in fees, R$1,500 to R$3,500 if the dealer does it.'],['IPVA','Annual state ownership tax, 1.9% to 4% of the invoice value, prorated in the purchase year; several states exempt EVs and São Paulo exempts flex hybrids.'],['Licenciamento anual','The yearly Detran renewal (R$120 to R$300) paid with the IPVA.'],['Tabela FIPE','The monthly reference value of every model, used for IPVA, insurance and trade-ins.'],['Flex / regra dos 70%','Almost every Brazilian-built car burns any mix of petrol and ethanol; ethanol is cheaper per km when it costs less than 70% of petrol.'],['PBEV / INMETRO','The official efficiency label (km/L for petrol and ethanol, range for EVs).'],['CDC / entrada / CET / IOF','The standard car loan, the down payment (20% to 30%), the total effective cost of the loan and the 0.38%-plus-daily federal tax on credit.'],['Consórcio','A savings pool that delivers a car without interest but with a 12% to 20% admin fee and no fixed date.'],['Supervalorização do usado','The dealer\u2019s inflated trade-in offer used instead of a cash discount.']],
+  CA: [['MSRP / PDSF','The manufacturer\u2019s sticker before freight, fees and taxes.'],['Freight & PDI','The manufacturer\u2019s fixed delivery and pre-delivery charge (C$1,850 to C$4,000), added to every sale and taxed.'],['All-in price','What Ontario, Quebec, BC, Alberta, Manitoba and Saskatchewan dealers must advertise: MSRP plus freight and every fee, before sales tax and registration.'],['A/C tax and green levy','The C$100 federal excise on air conditioning and the C$1,000 to C$4,000 levy on cars rated 13 L/100 km or worse (pickups exempt).'],['Luxury tax','Federal tax on vehicles over C$100,000: the lesser of 10% of the price or 20% of the amount above C$100,000, with sales tax on top.'],['HST / GST / PST / QST','Harmonised tax in Ontario (13%) and the Atlantic provinces (14% to 15%); the 5% federal GST plus provincial taxes elsewhere; BC\u2019s PST climbs to 20% on expensive cars.'],['EVAP','The federal Electric Vehicle Affordability Program: C$5,000 for a BEV or C$2,500 for a PHEV at the dealer on vehicles under C$50,000 all-in, one per person, 2026 to 2030.'],['Roulez vert','Quebec\u2019s EV rebate (C$2,000 BEV / C$1,000 PHEV), ending 31 Dec 2026.'],['Counter-tariff','Canada\u2019s 25% surtax on US-assembled vehicles, remitted for makers with Canadian plants; Chinese-built EVs pay 6.1% inside a 49,000-unit quota.'],['Admin / doc fee','The dealer\u2019s own paperwork charge (C$199 to C$999), negotiable and inside all-in prices.'],['ICBC / MPI / SGI / SAAQ','The public insurance schemes of BC, Manitoba, Saskatchewan and (injury only) Quebec, bought with the plate.'],['NRCan rating','Canada\u2019s official fuel-consumption and range figures, on every window sticker.'],['Residual / km allowance','Leasing terms: the buy-back price and the 16,000 to 24,000 km-a-year cap.'],['CUSMA-compliant','A vehicle meeting the North American content rules; only its non-Canadian/Mexican share carries the counter-tariff.']],
+  ALL: [['Converted price','Each car\u2019s home-market list price converted at ECB reference rates of 29 September 2026 (rubles at the market rate). Currency moves change the ranking, not the cars.'],['Why the same car costs different amounts','Taxes inside the sticker differ (18% to 40% GST in India, up to 50% excise in Thailand, 35% import duty in Brazil), as do freight, dealer margins and what equipment comes standard.'],['Est. on-road','Computed with the car\u2019s home-market rules for its default region (Ontario, São Paulo, Moscow, Shanghai excluded, NSW and so on), then converted.'],['Purchasing power','A car can be cheap in dollars but expensive locally: an Alto K10 is US$3,900 in India, where the average income is a tenth of the US figure.'],['Efficiency units','Pick mpg (US), L/100 km or km/L in the filter panel; EV range shows in miles with mpg and in km otherwise. Home-market test cycles differ (EPA, WLTP, CLTC, NEDC), so ranges are not perfectly comparable.'],['Price per horsepower','The list price divided by peak power, a quick value screen for performance buyers; it ignores weight, gearbox and drivetrain.'],['Fuel cost','Yearly running cost at the home market\u2019s fuel and electricity prices and typical annual distance, converted.'],['Preliminary','Announced or estimated pricing that can still change; imported and luxury models are the most common cases.'],['Grey imports','Cars only available as parallel imports (Toyota in Russia, VW in Thailand) are not listed; every row has an official importer or plant.']],
+  TH: [['ราคาป้าย (list price)','The brand’s published retail price; already includes excise, interior tax and VAT.'],['ภาษีสรรพสามิต (excise tax)','The big hidden tax, 2% to 50% of the pre-VAT price by CO2 and technology: 2% for EV3.5 electric cars, 13% to 34% for petrol cars, 25% for PPVs.'],['CBU / CKD','Fully imported (duty up to 80% from Japan and Europe, 0% from China) versus assembled in Thailand. That is why a Forester costs ฿2.6 m.'],['Eco Sticker','The government fuel-economy label (km/L, CO2) every new car carries; source of the efficiency figures.'],['PPV','Pickup passenger vehicle: a 7-seat SUV on a pickup chassis (Fortuner, MU-X, Everest, Pajero Sport). Taxed at 18% to 25%.'],['EV3.5','The 2024-27 government EV package: 2% excise plus a ฿25,000 to ฿50,000 subsidy already deducted from participating brands’ stickers. Expires end of 2027.'],['ป้ายแดง (red plate)','Temporary dealer plate used for up to 30 days until your white plate arrives.'],['ภาษีรถประจำปี (annual tax)','The yearly road-tax sticker, ฿900 to ฿7,000 by engine size (weight for pickups and EVs).'],['พ.ร.บ. (por-ror-bor)','Compulsory third-party injury insurance, ฿645 for a car, sold with the annual tax. Separate from voluntary insurance.'],['ประกันชั้น 1 / 2+ / 3+','First-class (comprehensive), 2+ and 3+ voluntary insurance. Finance companies require first class while you owe money.'],['ดาวน์ / ฟรีดาวน์','Down payment / zero-down deal. Thai loans are hire-purchase: the finance company owns the car until the last instalment.'],['ดอกเบี้ยคงที่ (flat rate)','Adverts quote a flat rate; the true effective rate is about 1.8 to 1.9 times higher (2.99% flat ≈ 5.5%).'],['ของแถม (freebies)','Dealer extras that replace cash discounts: film, insurance, mats, wall-box. Always ask for their cash value.'],['Motor Show / Motor Expo','The Bangkok shows (March-April and December) where launch prices and the year’s best finance deals appear.']]
+};
+const ABOUT = {
+  US: `<h2>How these numbers work</h2><p><b>Sticker (MSRP)</b> is the manufacturer’s base price for each model’s cheapest trim through its most expensive, before the mandatory destination charge. Prices are the 2026 model year as published by the manufacturers, compiled September 29, 2026, with 2025 leftovers and early 2027 models included and labeled. Models marked <i>preliminary</i> use announced or expected pricing that can still change.</p><p><b>Estimated drive-off</b> starts from the sticker plus destination, applies a typical dealer discount or markup for that model’s demand level (in August 2026 incentives averaged about 6.6% of MSRP industry-wide, with far larger EV incentives), then adds your state’s sales tax, a typical dealer documentation fee, and roughly $350 for title and plates. Local tax rates, dealer add-ons and negotiation change the real number, so treat it as a range to bargain within.</p><p><b>Fuel economy</b> is the EPA combined rating for the most efficient common configuration; electric range is the EPA figure for the longest-range trim. The federal $7,500 EV tax credit ended September 30, 2025; some states and utilities still offer EV rebates.</p>`,
+  IN: `<h2>How these numbers work</h2><p><b>Ex-showroom</b> is the manufacturer’s published price, GST included, for each model’s cheapest variant through its most expensive, as listed on September 29, 2026 after the September 2025 GST cut (18% on small cars, 40% on larger ones, 5% on EVs). Models marked <i>preliminary</i> use announced, expected or imported-model pricing that can still change.</p><p><b>Estimated on-road</b> applies a typical dealer discount for that model’s demand, then adds your state’s RTO road tax by price slab and fuel type, about ₹3,000 for registration, HSRP plates and FASTag, a first-year comprehensive insurance estimate, and 1% TCS on cars above ₹10 lakh. Accessories, extended warranty and any “handling charges” are extra and negotiable.</p><p><b>Mileage</b> is the ARAI-claimed figure for the most efficient common variant; EV range is the manufacturer’s claimed figure for the biggest battery. Road-tax slabs change with state budgets and several EV waivers have expiry dates, so confirm the on-road quote with two or three dealers.</p>`,
+  CN: `<h2>How these numbers work</h2><p><b>Guide price (厂商指导价)</b> is the manufacturer’s list price including 13% VAT and consumption tax, for each model’s cheapest trim through its most expensive, as listed on Autohome in late September 2026. CLTC range is quoted; expect 65% to 80% of it in real use.</p><p><b>Estimated 落地价</b> applies the discount typical for that model (the price war has joint-venture petrol cars and German luxury 15% to 35% below list, while hot NEVs sell at list), then adds purchase tax (10% of the ex-VAT price; 5% for NEVs in 2026-27 with the reduction capped at ¥15,000), compulsory and commercial insurance, registration and, for your city, a plate: Shanghai auctions ICE and PHEV plates (about ¥94,000 in September 2026) and gives BEVs a free green plate; Beijing allocates plates by lottery and points; Guangzhou, Shenzhen, Hangzhou and Tianjin auction petrol plates for ¥1,500 to ¥12,000 and give NEVs free ones; every other city charges only the ¥150 registration.</p><p>The national trade-in subsidy (6% to 12% of the price, capped at ¥13,000 to ¥20,000) is paid to you afterwards and is shown but not subtracted.</p>`,
+  UK: `<h2>How these numbers work</h2><p><b>OTR price</b> is the manufacturer’s on-the-road price (VAT, delivery, plates, £55 registration and first-year road tax included) for each model’s cheapest trim through its most expensive, as published on brand sites, Carwow and What Car? in September 2026, before the Electric Car Grant. Pickups are shown VAT-inclusive.</p><p><b>Estimated drive-away</b> applies the discount brokers and dealers typically achieve for that model (0% to 2% on waiting-list cars, 5% to 8% on most, 12% to 25% on EVs over £37k, Stellantis brands and pre-registered stock), then takes off the Electric Car Grant (£1,500 or £3,750) where the maker is on the scheme and the trim lists under £37,000. Taxes are identical across England, Scotland, Wales and Northern Ireland; the only regional variable is insurance.</p><p>Road tax from year two is £200, plus £440 a year in years two to six for cars listed over £40,000 (£50,000 for EVs). mpg, CO2 and range are WLTP figures.</p>`,
+  AU: `<h2>How these numbers work</h2><p><b>RRP</b> is the manufacturer’s recommended retail price before on-road costs (GST and any Luxury Car Tax included) for each model’s cheapest grade through its most expensive, from carsguide, Drive, CarExpert and brand sites in September 2026. Brands that publish only drive-away prices are converted and marked <i>preliminary</i>.</p><p><b>Estimated drive-away</b> applies the discount typical for that model (Toyota and Tesla at RRP; A$1,000 to A$3,000 off most; 6% to 15% off Chinese brands, diesel utes and run-out stock), adds a typical dealer delivery fee (negotiable), your state or territory’s stamp duty on the dutiable value, and 12 months of registration, CTP and plates. Comprehensive insurance is shown but not included.</p><p>Fuel figures are the ADR combined L/100 km on the windscreen label; range is WLTP where the brand quotes it. September 2026 fuel prices (unleaded about A$2.35, diesel about A$2.80) reflect the mid-year oil shock.</p>`,
+  MX: `<h2>How these numbers work</h2><p><b>Precio de lista</b> is the brand’s published price, IVA and ISAN included, for each model’s cheapest versión through its most expensive, from brand sites and Autocosmos in September 2026. Promotional “precios especiales” tied to financing are noted, not used.</p><p><b>Estimated precio final</b> applies the discount typical for that model (nothing on Versa, Hilux or RAV4; MX$10,000 to MX$30,000 bonos on most; 6% to 15% on Chinese brands and slow sellers), then adds your state’s alta de placas, the holograma for Megalópolis states, and first-year tenencia where it still applies (3% of the pre-IVA value in CDMX and Edomex above MX$638,000; EVs and hybrids exempt). Comprehensive insurance is shown but not included.</p><p>Rendimiento comes from the CONUEE Ecovehículos label; EV range is as published by the brand (NEDC/CLTC for Chinese brands, EPA for Tesla, GM and Ford). Cars built in China carry a 50% import tariff since January 2026, absorbed so far by the brands.</p>`,
+  ES: `<h2>How these numbers work</h2><p><b>PVP</b> is the manufacturer’s tarifa oficial including IVA 21% and the impuesto de matriculación, for each model’s cheapest versión through its most expensive, from km77 and brand tariffs in September 2026, before campaign discounts (Toyota’s advertised promo prices are 10% to 15% below its tariff, so Toyota looks dearer here than in adverts).</p><p><b>Estimated precio final</b> applies the discount typical for that model (0% to 3% on Dacia and hot launches, 4% to 9% on most, 10% to 20% on Toyota promos, Stellantis campaigns, Tesla and km-0 stock), then adds matriculación costs (DGT fee, plates, gestoría) and the prorated first-year IVTM. Canarias prices are recomputed with IGIC instead of IVA; Ceuta and Melilla with IPSI. Plan Auto+ (up to €4,500, paid after purchase) and the 15% IRPF deduction are shown for CERO-label cars but not subtracted.</p><p>Consumption, CO2 and range are WLTP figures.</p>`,
+  RU: `<h2>How these numbers work</h2><p><b>Recommended price (РРЦ)</b> is the maker\u2019s list price with 20% VAT, for each model\u2019s cheapest trim through its most expensive, from official price lists and Russian portals in late September 2026, before the advertised benefits. Only brands with an official importer or plant are listed; parallel imports (Toyota, BMW, Kia) are not. Imported cars carry the utilisation fee and 15% duty inside the price.</p><p><b>Estimated drive-away</b> applies the benefits typical for that model (0% to 3% on waiting-list cars, 5% to 10% on most, 12% to 25% on imported stock), adds a typical dealer add-on package, the 4,500 ₽ registration duty and a first-year ОСАГО premium for your region. КАСКО, the transport tax billed next year and the state loan discount are shown but not included.</p><p>Consumption is the maker\u2019s combined figure; EV range is NEDC or CLTC as published. Fuel prices are the 29 September 2026 national averages.</p>`,
+  BR: `<h2>How these numbers work</h2><p><b>Preço de tabela</b> is the brand\u2019s published São Paulo price with IPI, PIS/COFINS, ICMS and frete inside, for each model\u2019s cheapest versão through its most expensive, from Webmotors and brand launch pricing in late September 2026 (model year 2027 where already on sale). Rio prices run about 1.5% higher.</p><p><b>Estimated preço final</b> applies the bonus typical for that model (nothing on Polo, Onix, HB20 or Toyota hybrids; 3% to 7% on most; 8% to 20% on Stellantis SUVs, imported EVs and 2025-plate stock), then adds your state\u2019s emplacamento and first-year IPVA (prorated for a late-September purchase, with each state\u2019s EV and hybrid rules). There is no compulsory insurance in 2026; comprehensive cover is shown but not included.</p><p>km/L is the INMETRO petrol figure; ethanol returns about 30% less per litre but is cheaper per km when it costs under 70% of petrol, as in São Paulo now.</p>`,
+  CA: `<h2>How these numbers work</h2><p><b>MSRP</b> is the manufacturer\u2019s Canadian sticker before freight, fees and taxes, for each model\u2019s cheapest trim through its most expensive, from brand sites, Unhaggle and AutoTrader in late September 2026 (2027 model year where already on sale). Brands that only publish all-in prices are backed out and marked <i>preliminary</i>.</p><p><b>Estimated drive-away</b> applies the discount typical for that model, then adds the brand\u2019s freight & PDI, the A/C tax, tire and admin fees, the green levy and federal luxury tax where they apply, your province\u2019s sales tax (BC\u2019s price-tiered PST included), registration, and takes off the federal EVAP rebate and any provincial EV rebate. Insurance is shown but not included.</p><p>Consumption and range are NRCan ratings. September 2026 fuel prices reflect the Gulf shock (diesel at a record C$2.64) and the suspended federal excise tax.</p>`,
+  ALL: `<h2>How the World view works</h2><p>Every car from the eleven country tabs in one list. <b>List price</b> is the home-market sticker converted at ECB reference rates of 29 September 2026 (USD 1.1355, GBP 0.857, INR 108.99, CNY 7.61, AUD 1.62, MXN 20.32, THB 38.06, BRL 5.92, CAD 1.61 per euro; rubles at 73.5 per dollar). <b>Est. on-road</b> is computed with each car\u2019s home rules for its default region and converted the same way.</p><p>Prices are not directly comparable across borders: stickers include very different taxes (5% to 40% GST in India, 2% to 50% excise in Thailand, 35% import duty in Brazil, VAT in Europe, nothing in the US and Canada), and equipment, warranties and safety kit differ. Use this view to spot outliers and value, then read the car\u2019s home tab for what it really costs there.</p><p>Efficiency is shown in the unit you pick; EV ranges come from different test cycles (EPA, WLTP, CLTC, NEDC) and CLTC figures run about 20% optimistic.</p>`,
+  TH: `<h2>How these numbers work</h2><p><b>Retail price (ราคาป้าย)</b> is the brand’s published price including excise, interior tax and 7% VAT, for each model’s cheapest grade through its most expensive, from brand sites and Thai portals in September 2026. Chinese-brand list prices move every few months and their promo prices are often 5% to 10% below the row.</p><p><b>Estimated on-road</b> applies the discount typical for that model (nothing on waiting-list cars; freebies worth 1% to 3% on Japanese mainstream; 8% to 15% on run-outs and the EV price war), then adds DLT registration, the first year’s annual tax (by engine size, weight for pickups and EVs; the 80% EV discount expired in November 2025), พ.ร.บ. compulsory insurance and a typical dealer processing fee. Taxes are national, so there is no region to pick. First-class insurance is shown but not included since financed cars often get it free.</p><p>km/L and CO2 are Eco Sticker figures; EV range is NEDC for most Chinese, Japanese and Korean EVs and WLTP for Tesla and the Europeans. E20 gasohol is the default petrol price.</p>`
+};
+
+/* ===== state ===== */
+let CC = 'US', C = COUNTRIES.US, CARS = DATA.US, M = MONEY.US, A = {};
+const S = {};
+let compare = [], page = 1, lastList = []; const PAGE = 30;
+const $ = id => document.getElementById(id);
+function store(k,v){ try{ localStorage.setItem('cf_'+k, JSON.stringify(v)); }catch(e){} }
+function load(k,d){ try{ const v = localStorage.getItem('cf_'+k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } }
+function esc(s){ return String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch])); }
+function resetS(){ Object.assign(S, {q:'', body:new Set(), fuel:new Set(), size:new Set(), cls:new Set(), make:new Set(), countries:new Set(), pmin:0, pmax:0, seats:0, drive:'any', eff:0, rng:0, years:{2025:true,2026:true,2027:true}, onlyNew:false, est:true, sort:'price-asc'}); }
+resetS();
+const money = n => M.money(n), moneyK = n => M.k(n);
+function fuelLbl(f){ return C.fuelLabel[f] || f; }
+const P = c => CC==='ALL' ? c.wprice : c.price;
+const TOP = c => CC==='ALL' ? c.wtop : c.top;
+function annualFuel(c){ if (CC==='ALL'){ const f = fuelCost(c.home, DEF_A[c.cc], c.cc); return f==null ? null : toWorld(f, c.cc); } return fuelCost(c, A, CC); }
+function bd(c, price){
+  if (CC!=='ALL') return breakdown(CC, c, price, S.state, M);
+  const o = breakdown(c.cc, c.home, price, regionDefault(c.cc), MONEY[c.cc]);
+  return Object.assign(o, {lo:toWorld(o.lo, c.cc), hi:toWorld(o.hi, c.cc), dlo:toWorld(o.dlo, c.cc), dhi:toWorld(o.dhi, c.cc), head:`${CC_NAME[c.cc]} · ${o.head} · in ${CUR[c.cc]}`});
+}
+function trimPrice(c, t){ return c.price + (c.top - c.price)*(t||0); }
+function rngShown(c){ if (CC==='ALL') return WUNIT==='mpg' ? c.rng/1.609 : c.rng; return CC==='UK' ? c.rng/1.609 : c.rng; }
+function localM(c){ return CC==='ALL' ? MONEY[c.cc] : M; }
+
+/* ===== filtering ===== */
+function passes(c){
+  if (CC==='US' && !S.years[c.year]) return false;
+  if (CC!=='US' && S.onlyNew && !c.isNew) return false;
+  if (!S.est && c.est) return false;
+  if (S.q){ const hay = (c.make+' '+c.model+' '+c.fuels.map(fuelLbl).join(' ')+' '+(BODY_LABEL[c.body]||c.body)).toLowerCase(); for (const t of S.q.split(/\s+/)) if (t && !hay.includes(t)) return false; }
+  if (S.body.size && !S.body.has(c.body)) return false;
+  if (S.fuel.size && !c.fuels.some(f => S.fuel.has(f))) return false;
+  if (S.size.size && !S.size.has(c.size)) return false;
+  if (S.cls.size && !S.cls.has(c.cls)) return false;
+  if (S.make.size && !S.make.has(c.make)) return false;
+  if (S.countries.size && !S.countries.has(c.cc)) return false;
+  if (S.pmin && TOP(c) < S.pmin) return false;
+  if (S.pmax && P(c) > S.pmax) return false;
+  if (S.seats && c.seats < S.seats) return false;
+  if (S.drive==='awd' && !/AWD|4WD/.test(c.drive)) return false;
+  if (S.drive==='fwd' && !c.drive.includes('FWD')) return false;
+  if (S.drive==='rwd' && !c.drive.includes('RWD')) return false;
+  if (S.eff && !(c.fuel==='EV'||c.fuel==='Hydrogen')){ const e = C.eff.get(c); if (C.eff.mode==='min' ? !(e && e >= S.eff) : !(e && e <= S.eff)) return false; }
+  if (S.rng && !(c.rng && rngShown(c) >= S.rng)) return false;
+  return true;
+}
+function sortList(list){
+  const fc = {}; const fuel = c => { if (!(c.id in fc)) fc[c.id] = annualFuel(c); return fc[c.id]; };
+  const effv = c => { const e = C.eff.get(c); return e==null ? null : e; };
+  const cmp = {
+    'price-asc': (a,b)=>P(a)-P(b),
+    'price-desc':(a,b)=>P(b)-P(a),
+    'fuel': (a,b)=>{ const x=fuel(a), y=fuel(b); if (x==null&&y==null) return P(a)-P(b); if (x==null) return 1; if (y==null) return -1; return x-y; },
+    'mpg': (a,b)=>{ const x=effv(a), y=effv(b); if (x==null&&y==null) return P(a)-P(b); if (x==null) return 1; if (y==null) return -1; return (C.eff.mode==='min' ? y-x : x-y) || P(a)-P(b); },
+    'range': (a,b)=>{ const x=a.fuel==='PHEV'?0:(a.rng||0), y=b.fuel==='PHEV'?0:(b.rng||0); return y-x || P(a)-P(b); },
+    'hp': (a,b)=>b.hp-a.hp || P(a)-P(b),
+    'perhp': (a,b)=>P(a)/a.hp - P(b)/b.hp,
+    'seats': (a,b)=>b.seats-a.seats || P(a)-P(b),
+    'name': (a,b)=>(a.make+a.model).localeCompare(b.make+b.model)
+  }[S.sort] || ((a,b)=>P(a)-P(b));
+  return list.slice().sort(cmp);
+}
+function activeCount(){
+  let n = 0;
+  if (S.size.size) n++; if (S.cls.size) n++; if (S.make.size) n++; if (S.countries.size) n++; if (S.pmin||S.pmax) n++; if (S.seats) n++; if (S.drive!=='any') n++; if (S.eff) n++; if (S.rng) n++;
+  if (CC==='US' && !(S.years[2025]&&S.years[2026]&&S.years[2027])) n++; if (CC!=='US' && S.onlyNew) n++; if (!S.est) n++;
+  return n;
+}
+
+/* ===== rendering ===== */
+function cardHTML(c){
+  const o = CC==='ALL' ? {lo:c.wlo, hi:c.whi} : bd(c, c.price);
+  const tags = [`<span class="tag">${BODY_LABEL[c.body]||c.body} · ${c.size}</span>`, `<span class="tag f-${c.fuel}">${c.fuels.map(fuelLbl).join(' / ')}</span>`];
+  if (CC==='ALL') tags.unshift(`<span class="tag cc">${CC_NAME[c.cc]}</span>`);
+  if (c.cls!=='Mainstream') tags.push(`<span class="tag">${c.cls}</span>`);
+  if (c.year===2025) tags.push(`<span class="tag left">2025 leftover</span>`);
+  if (c.year===2027) tags.push(`<span class="tag new">2027 arrival</span>`);
+  if (c.isNew) tags.push(`<span class="tag new">New or updated</span>`);
+  if (c.est) tags.push(`<span class="tag est">Preliminary</span>`);
+  const inCmp = compare.includes(c.id);
+  const topTxt = TOP(c) > P(c) ? `up to ${moneyK(TOP(c))} · ` : '';
+  const sub = CC==='ALL' ? `${topTxt}${MONEY[c.cc].k(c.price)} at home` : CC==='US' ? `${topTxt}+${money(c.dest)} dest.` : CC==='IN' ? `${topTxt}incl. ${c.gst}% GST` : CC==='UK' ? `${topTxt}all taxes in` : CC==='AU' ? `${topTxt}before on-roads` : CC==='CA' ? `${topTxt}before freight & tax` : `${topTxt}taxes included`;
+  const fuelCostV = annualFuel(c);
+  return `<article class="card" data-id="${c.id}">
+    <div class="card-top">
+      <div><div class="mk">${esc(c.make)}</div><h3>${esc(c.model)}<span class="yr">${c.year}</span></h3></div>
+      <button class="cmp" type="button" data-cmp="${c.id}" aria-pressed="${inCmp}">${inCmp?'✓ Comparing':'+ Compare'}</button>
+    </div>
+    <div class="tags">${tags.join('')}</div>
+    <div class="prices">
+      <div class="pbox"><div class="lbl">${C.cardPriceLabel}</div><div class="val">${CC==='US'||CC==='UK'||(CC==='ALL'&&['USD','GBP','EUR','CAD','AUD'].includes(WCUR))?money(P(c)):moneyK(P(c))}</div><div class="sub">${sub}</div></div>
+      <div class="pbox otd"><div class="lbl">${C.otdLabel} · ${esc(CC==='ALL'?WCUR:C.stateShort(S.state))}</div><div class="val${M.range(o.lo,o.hi).length>=12?' long':''}">${M.range(o.lo, o.hi).replace('–','–<wbr>')}</div><div class="sub">${C.otdSub}</div></div>
+    </div>
+    <div class="specs"><span class="eff">${effShort(c, CC)}</span><span><b>${c.hp.toLocaleString()}</b> ${C.powerUnit}</span><span><b>${c.seats}</b> seats</span><span>${esc(c.drive)}</span>${fuelCostV!=null?`<span class="muted">~${moneyK(fuelCostV)}/yr fuel</span>`:''}</div>
+    <div class="mkt m-${c.mkt}">${CC==='ALL' ? MKT_TXT[c.cc][c.mkt][0] : MKT_TXT[CC][c.mkt][0]}</div>
+    <p class="note">${esc(c.note)}</p>
+    <button class="btn more" type="button" data-detail="${c.id}">Details &amp; cost breakdown</button>
+  </article>`;
+}
+function updateMore(){
+  const shown = Math.min(page*PAGE, lastList.length);
+  $('empty').hidden = lastList.length > 0;
+  $('moreRow').hidden = shown >= lastList.length;
+  $('btnMore').textContent = `Show ${Math.min(PAGE, lastList.length - shown)} more (${(lastList.length - shown).toLocaleString('en-US')} left)`;
+}
+function render(){
+  lastList = sortList(CARS.filter(passes));
+  $('grid').innerHTML = lastList.slice(0, page*PAGE).map(cardHTML).join('');
+  updateMore();
+  $('resCount').textContent = `${lastList.length.toLocaleString('en-US')} of ${CARS.length.toLocaleString('en-US')} vehicles · ${regionName(CC, S.state)}`;
+  const so = $('sort').selectedOptions[0]; $('sortedLbl').textContent = so ? 'Sorted by ' + so.text.charAt(0).toLowerCase() + so.text.slice(1) : '';
+  const parts = [];
+  if (S.body.size) parts.push([...S.body].map(b=>BODY_PLURAL[b]||b).join(', '));
+  if (S.fuel.size) parts.push([...S.fuel].map(fuelLbl).join(' / '));
+  $('resTitle').textContent = parts.length ? parts.join(' · ') : (S.q ? `Results for “${S.q}”` : 'All vehicles');
+  const n = activeCount(); $('fcount').hidden = !n; $('fcount').textContent = n;
+  $('applyCount').textContent = lastList.length.toLocaleString('en-US');
+  updateCmpBar();
+}
+function renderMore(){                       // append the next page instead of rebuilding the whole list
+  const start = (page-1)*PAGE;
+  $('grid').insertAdjacentHTML('beforeend', lastList.slice(start, page*PAGE).map(cardHTML).join(''));
+  updateMore();
+  // tall screens: keep filling until the button is off-screen, up to 150 cards; after that it is a tap
+  requestAnimationFrame(() => { const m = $('moreRow'); if (!m.hidden && page*PAGE < 150 && m.getBoundingClientRect().top < innerHeight + 600) { page++; renderMore(); } });
+}
+let rafR = 0; function renderSoon(){ cancelAnimationFrame(rafR); rafR = requestAnimationFrame(() => { rafR = 0; render(); }); }
+function updateCmpBar(){
+  $('cmpbar').hidden = compare.length === 0;
+  document.body.classList.toggle('has-cmp', compare.length > 0);
+  $('cmpMsg').textContent = `${compare.length} of 4 selected`;
+  $('btnCompare').disabled = compare.length < 2;
+  $('btnCompare').textContent = compare.length < 2 ? 'Pick one more' : `Compare ${compare.length}`;
+}
+
+/* ===== detail ===== */
+let detailCar = null, detailT = 0;
+function openDetail(id){
+  detailCar = CARS[id]; if (!detailCar) return; detailT = 0;
+  $('dMake').textContent = detailCar.make + (detailCar.est ? ' · preliminary pricing' : '');
+  $('dTitle').textContent = `${detailCar.model} ${detailCar.year}`;
+  renderDetail();
+  $('dBody').scrollTop = 0;
+  if (!$('dlgDetail').open) $('dlgDetail').showModal();
+}
+const wbr = s => s.replace(/ – /g, ' –<wbr> ');   // let long price ranges wrap after the dash on narrow screens
+function stickerHTML(o, totalLabel, ML){
+  const lo = CC==='ALL' ? o.lo/FX[WCUR]*FX[CUR[detailCar.cc]] : o.lo, hi = CC==='ALL' ? o.hi/FX[WCUR]*FX[CUR[detailCar.cc]] : o.hi;
+  return `<div class="sticker"><div class="st-head"><span>Cost breakdown</span><span>${esc(o.head)}</span></div><div class="st-rows">
+    ${o.lines.map(l => `<div class="st-row ${l.cls||''}"><span class="k">${esc(l.k)}${l.sub?`<small>${esc(l.sub)}</small>`:''}</span><span class="v">${wbr(esc(l.v))}</span></div>`).join('')}
+    <div class="st-row total"><span class="k">${totalLabel}</span><span class="v">${ML.money(lo)} –<wbr> ${ML.money(hi)}</span></div>
+  </div></div>`;
+}
+function effPanel(c){
+  if (CC==='US'){
+    if (c.fuel==='EV' || c.fuel==='Hydrogen') return `<div class="epa"><div><b>${c.rng}</b><span>mi range</span></div><div><b>${c.mpge}</b><span>MPGe</span></div><div><b>${c.hp.toLocaleString()}</b><span>hp</span></div></div>`;
+    if (c.fuel==='PHEV') return `<div class="epa"><div><b>${c.rng}</b><span>mi electric</span></div><div><b>${c.mpg}</b><span>mpg after</span></div><div><b>${c.mpge}</b><span>MPGe</span></div></div>`;
+    if (c.mpg) return `<div class="epa"><div><b>${c.city}</b><span>city</span></div><div><b>${c.hwy}</b><span>highway</span></div><div><b>${c.mpg}</b><span>combined</span></div></div>`;
+    return `<p class="sm">Heavy trucks and large vans are not EPA fuel-economy rated.</p>`;
+  }
+  if (CC==='IN'){
+    if (c.fuel==='EV') return `<div class="epa"><div><b>${c.rng}</b><span>km range</span></div><div><b>${usMi(c.rng)}</b><span>miles range</span></div><div><b>${c.kwh}</b><span>kWh battery</span></div></div>`;
+    if (c.fuel==='PHEV') return `<div class="epa"><div><b>${c.rng} / ${usMi(c.rng)}</b><span>km / mi electric</span></div><div><b>${c.kmpl}</b><span>kmpl after</span></div><div><b>${usMpg(100/c.kmpl)}</b><span>mpg (US) after</span></div></div>`;
+    return `<div class="epa"><div><b>${c.kmpl}</b><span>kmpl claimed</span></div><div><b>${usMpg(100/c.kmpl)}</b><span>mpg (US) claimed</span></div><div><b>${Math.round(c.kmpl*0.8*10)/10}</b><span>kmpl real-world*</span></div></div><p class="fine">*Claimed figures are ARAI test numbers; city driving usually returns 15% to 25% less. CNG versions travel about 30% further per kg than the petrol figure per litre. mpg shown in US gallons.</p>`;
+  }
+  const u = CC==='ALL' ? WUNIT : EFF_UNIT[CC]; const unitLbl = u==='mpg' ? 'mpg' : u==='kml' ? 'km/L' : 'L/100 km'; const rU = (CC==='UK' || (CC==='ALL' && WUNIT==='mpg')) ? 'mi' : 'km';
+  const ev = c.fuel==='EV' ? (rU==='mi'
+      ? `<div><b>${Math.round(rngShown(c))}</b><span>mi range</span></div><div><b>${Math.round(c.rng)}</b><span>km range</span></div><div><b>${c.kwh||'–'}</b><span>kWh battery</span></div>`
+      : `<div><b>${Math.round(c.rng)}</b><span>km range</span></div><div><b>${usMi(c.rng)}</b><span>miles range</span></div><div><b>${c.kwh||'–'}</b><span>kWh battery</span></div>`) : null;
+  const HCC2 = CC==='ALL' ? c.cc : CC;
+  if (ev) return `<div class="epa">${ev}</div><p class="fine">${HCC2==='CN'?'CLTC range; expect 65% to 80% in real use.':HCC2==='MX'||HCC2==='TH'||HCC2==='RU'||HCC2==='BR'?'Range as published by the brand (NEDC/CLTC for Chinese brands, EPA/WLTP for others); real use is 10% to 25% lower.':HCC2==='US'||HCC2==='CA'?'EPA/NRCan range; real use is 10% to 30% lower in winter or at highway speeds.':HCC2==='IN'?'Claimed range (ARAI/MIDC); real use is 20% to 30% lower.':'WLTP range; real use is typically 10% to 25% lower, more in winter.'}</p>`;
+  const iceVal = u==='mpg' ? Math.round((CC==='ALL'?235.215:282.48)/c.l100) : u==='kml' ? Math.round(100/c.l100*10)/10 : Math.round(c.l100*10)/10;
+  const unitLbl2 = (CC==='UK') ? 'mpg (UK gallon)' : unitLbl;
+  const usTile = u==='mpg' ? '' : `<div><b>${usMpg(c.l100)||'–'}</b><span>mpg (US)</span></div>`;
+  if (c.fuel==='PHEV') return `<div class="epa"><div><b>${Math.round(rngShown(c))}${rU==='km'?' / '+usMi(c.rng):''}</b><span>${rU==='km'?'km / mi':'mi'} electric</span></div><div><b>${c.l100?iceVal:'–'}</b><span>${unitLbl} after</span></div>${u==='mpg' ? `<div><b>${c.kwh||'–'}</b><span>kWh battery</span></div>` : `<div><b>${usMpg(c.l100)||'–'}</b><span>mpg (US) after</span></div>`}</div>`;
+  if (!c.l100) return `<p class="sm">No official consumption figure for this model.</p>`;
+  const ukTile = CC==='UK' ? `<div><b>${usMpg(c.l100)||'–'}</b><span>mpg (US gallon)</span></div>` : '';
+  return `<div class="epa"><div><b>${iceVal}</b><span>${unitLbl2} official</span></div>${usTile}${ukTile}<div><b>${c.co2!=null?c.co2:'–'}</b><span>g/km CO2</span></div>${u==='mpg' ? `<div><b>${c.hp}</b><span>${COUNTRIES[HCC2].powerUnit}</span></div>` : ''}</div><p class="fine">${HCC2==='AU'?'ADR 81/02 label figure; real use is 15% to 30% higher.':HCC2==='UK'||HCC2==='ES'?'WLTP combined; real use is typically 10% to 20% worse.':HCC2==='CN'?'WLTC combined; the PHEV figure is with a flat battery.':HCC2==='TH'?'Eco Sticker figure; real use is 15% to 25% worse.':HCC2==='CA'?'NRCan 5-cycle figure.':HCC2==='US'?'EPA combined figure.':HCC2==='IN'?'ARAI figure; real use is 15% to 25% worse.':HCC2==='BR'?'INMETRO petrol figure; ethanol returns about 30% less.':HCC2==='RU'?'Manufacturer combined figure.':'Ecovehículos label figure; real use is 10% to 25% worse.'}</p>`;
+}
+/* the parts of the detail sheet that depend on the trim slider */
+function detailDynamic(){
+  const c = detailCar; const ML = localM(c); const AA = CC==='ALL' ? DEF_A[c.cc] : A; const HC = CC==='ALL' ? COUNTRIES[c.cc] : C;
+  const price = trimPrice(c, detailT);
+  const o = bd(c, price);
+  const mid = (o.lo + o.hi)/2;
+  return {
+    trimVal: `<b>${ML.money(price)}</b> <span class="sm muted">${HC.cardPriceLabel} for the ${HC.trimWord} you picked</span>`,
+    world: CC==='ALL' ? `<div class="panel"><h4>Converted to ${CUR_NAME[WCUR]}</h4><div class="big">${money(o.lo)} –<wbr> ${money(o.hi)}</div><p class="sm">Estimated on-road in ${CC_NAME[c.cc]} (${regionName(c.cc, regionDefault(c.cc))}) at ECB reference rates of 29 Sept 2026. List price ${money(toWorld(price, c.cc))}. Open the ${CC_NAME[c.cc]} tab for other regions.</p></div>` : '',
+    sticker: stickerHTML(o, HC.otdLabel, ML),
+    pay: `<h4>Est. monthly payment</h4><div class="big">${money(monthlyPay(mid, AA))}<span class="sm"> / mo</span></div><p class="sm">${AA.down}% down, ${AA.apr}% rate, ${AA.term} months, on the midpoint ${HC.otdLabel.replace('Est. ','')} price${CC==='ALL'?' with '+CC_NAME[c.cc]+' loan norms':''}. ${CC==='ALL'?'':'Change these under “Cost assumptions”.'}</p>`
+  };
+}
+function updateDetailPrice(){ const d = detailDynamic(); $('dTrimVal').innerHTML = d.trimVal; $('dWorld').innerHTML = d.world; $('dSticker').innerHTML = d.sticker; $('dPay').innerHTML = d.pay; }
+function updateDetailCmpBtn(){ const b = $('dCmpBtn'); if (!b) return; const on = compare.includes(detailCar.id); b.className = 'btn' + (on ? '' : ' primary'); b.textContent = on ? 'Remove from compare' : 'Add to compare'; }
+function renderDetail(){
+  const c = detailCar; const ML = localM(c); const AA = CC==='ALL' ? DEF_A[c.cc] : A; const HC = CC==='ALL' ? COUNTRIES[c.cc] : C; const HCC = CC==='ALL' ? c.cc : CC;
+  const d = detailDynamic();
+  const fc = annualFuel(c);
+  const dist = AA.miles.toLocaleString('en-US') + ' ' + HC.distLabel;
+  const fuelExpl = HCC==='US'
+    ? (c.fuel==='EV'?`$${AA.elec.toFixed(2)}/kWh at home`:c.fuel==='PHEV'?`about half on home electricity, half on $${AA.gas.toFixed(2)} gas`:c.fuel==='Hydrogen'?'$36/kg hydrogen (Toyota includes a $15,000 fuel credit)':`$${(c.fuel==='Diesel'?AA.gas+0.45:AA.gas).toFixed(2)} per gallon`)
+    : (c.fuel==='EV'?`${AA.elec} per kWh of home charging with charging losses`:c.fuel==='PHEV'?`half on home electricity, half on petrol at ${AA.petrol} a litre`:c.fuel==='Diesel'?`diesel at ${AA.diesel} a litre`:c.fuel==='CNG'?`CNG at ${AA.cng} per kg`:`petrol at ${AA.petrol} a litre`);
+  const fuelLine = fc!=null ? `<div class="big">${money(fc)}<span class="sm"> / year</span></div><p class="sm">${dist} a year at ${fuelExpl}${CC==='ALL'?' (home-market prices, converted)':''}. That is about ${money(fc/12)} a month.</p>` : `<p class="sm">No official rating, so no estimate.</p>`;
+  const evNote = {
+    US: (c.fuel==='EV'||c.fuel==='PHEV') ? 'The federal $7,500 EV tax credit ended Sept 30, 2025. Some states (Colorado, Massachusetts, New York, New Jersey and others) and utilities still pay rebates.' : '',
+    IN: c.fuel==='EV' ? 'EVs pay only 5% GST and most states waive road tax, which is why the on-road gap to a petrol car is smaller than the ex-showroom gap.' : (c.fuels.includes('CNG') ? 'A factory CNG kit costs about ₹90,000 to ₹1 lakh more and eats boot space, but running cost per km is roughly half of petrol.' : ''),
+    CN: (c.fuel==='EV'||c.fuel==='PHEV') ? 'NEVs get half purchase tax in 2026-27, no 车船税, and free green plates in every city except Shanghai (BEV only) and Beijing (quota).' : 'Petrol cars need an auction or lottery plate in Shanghai, Beijing, Guangzhou, Shenzhen, Hangzhou and Tianjin.',
+    UK: c.fuel==='EV' ? 'EVs pay £10 first-year VED, then £200 a year; the £440 supplement applies over £50,000 list. Home charging on an EV tariff is about 7p/kWh.' : (c.fuel==='PHEV' ? 'PHEVs are taxed on CO2 like any car but get very low company-car BIK (4% to 16%).' : ''),
+    AU: c.fuel==='EV' ? 'No purchase rebates remain; the FBT exemption on a novated lease (EVs under A$91,661) is the big one, worth A$4,000 to A$11,000 a year to a salaried buyer.' : (c.body==='Pickup' ? 'Utes are exempt from Luxury Car Tax and get lower stamp duty in Victoria and South Australia.' : ''),
+    MX: (c.fuel==='EV'||c.fuel==='Hybrid'||c.fuel==='PHEV') ? 'EVs and hybrids pay no ISAN, no tenencia in CDMX/Edomex, half-price plates in CDMX and get the E hologram (no verification, exempt from Hoy No Circula).' : '',
+    ES: (c.fuel==='EV'||c.fuel==='PHEV') ? 'CERO-label cars: Plan Auto+ up to €4,500 (paid afterwards), 15% IRPF deduction, 75% off IVTM in most cities, free ZBE access and parking discounts.' : (c.fuel==='Hybrid' ? 'ECO-label hybrids get 50% to 75% off IVTM in many cities and ZBE access.' : ''),
+    TH: c.fuel==='EV' ? 'Excise is 2% under EV3.5 (10% for non-participating importers) and the subsidy is already in the sticker. A 30% rate for non-investing importers was approved in principle in September 2026 but is not law yet.' : (c.body==='Pickup' ? 'Pickups pay 3% to 13% excise versus 25% for a PPV, which is why they are so cheap for their size.' : ''),
+    RU: (c.fuel==='EV'||c.fuel==='PHEV') ? 'Russian-assembled EVs and range-extenders get a 35% state loan discount (up to 925,000 ₽); BEVs pay no transport tax in Moscow, the Oblast, St Petersburg and Tatarstan.' : (RU_LOCAL.has(c.make) ? 'Russian-built: eligible for the 20% state loan discount for medics, teachers, families and SMO participants when priced under 2 M ₽.' : 'Imported: the utilisation fee inside the price rises another 10% on 1 January 2027, which is why dealers are clearing 2026 stock now.'),
+    BR: c.fuel==='EV' ? 'EVs pay no IPVA in Paraná, Rio Grande do Sul, DF, Pernambuco and Bahia (under R$300k), 0.5% in Rio and the full 4% in São Paulo; home charging on tarifa branca costs about R$0.80/kWh.' : ((c.fuel==='Hybrid'||c.fuel==='PHEV') ? 'Flex hybrids up to R$261,154 pay no IPVA in São Paulo through 2026 (then 1% to 4% by 2030); Rio charges hybrids 1.5%.' : 'Flex: fill with ethanol when it costs under 70% of petrol, as it does in São Paulo, Minas and Paraná today.'),
+    CA: (c.fuel==='EV'||c.fuel==='PHEV') ? 'The federal EVAP rebate (C$5,000 BEV / C$2,500 PHEV) applies only under C$50,000 all-in and not to Chinese-built cars; Quebec adds C$2,000 until 31 Dec 2026, PEI C$4,000. Ontario\u2019s ultra-low overnight rate charges an EV for about 3 cents a kWh.' : (c.body==='Pickup' ? 'Pickups are exempt from the green levy and most HD trucks from the luxury tax.' : (c.l100!=null && c.l100>=12.5 ? 'Rated at 13 L/100 km or worse, so the federal green levy of C$1,000 to C$4,000 applies.' : ''))
+  }[HCC];
+  const industry = {US:'Industry-wide, incentives averaged about 6.6% of MSRP in August 2026 (about $3,100 per gas or hybrid vehicle, over $9,000 per EV).', IN:'Discounts peak at month-end, quarter-end and before Diwali; corporate, exchange and loyalty bonuses stack on top of the dealer’s own discount.', CN:'CPCA’s August 2026 data: retail down 24% year on year, NEV share a record 65%, pure-petrol sales down 40%, so petrol cars are being cleared and NEVs discounted less.', UK:'Carwow’s September 2026 sale headlined savings up to £7,700; pre-registered stock at quarter-end (March, June, September, December) is the cheapest route.', AU:'August 2026: EVs outsold petrol for the first time (24.9% share) after the fuel shock; Chinese brands hold 40% of the market and are cutting hardest.', MX:'El Buen Fin (mid-November) and the December remate de modelos are the two big discount windows; 0% interest for 12 to 36 months is the usual form.', ES:'Ganvam reports record average promotions of 12% to 14.5% in 2026; Plan Auto+ funds are expected to run out around late October.', TH:'Motor Show (March-April) and Motor Expo (December) bring the year’s best packages; the last week of a quarter is the next best time.', RU:'Dealer stocks sit at 2 to 3 months of sales, the key rate is 14% and the utilisation fee rises again in January 2027, so autumn 2026 promotions are the deepest in years.', BR:'Fenabrave counts a 15% sales rise in 2026 and Chinese brands at 22% of the market; the price war shows up as bônus, taxa zero and CNPJ tabelas rather than list cuts.', CA:'August 2026 sales rose 5.4%; 0% over 84 months is common at GM, Ram, VW and Nissan while Toyota hybrids sell at sticker.'}[HCC];
+  $('dBody').innerHTML = `
+    <div class="tags">${CC==='ALL'?`<span class="tag cc">${CC_NAME[c.cc]}</span>`:''}<span class="tag">${BODY_LABEL[c.body]||c.body} · ${c.size}</span><span class="tag f-${c.fuel}">${c.fuels.map(fuelLbl).join(' / ')}</span><span class="tag">${c.cls}</span><span class="tag">${c.seats} seats</span><span class="tag">${esc(c.drive)}</span>${c.year===2025?'<span class="tag left">2025 leftover</span>':''}${c.year===2027?'<span class="tag new">2027 arrival</span>':''}${c.isNew?'<span class="tag new">New or updated</span>':''}</div>
+    <p>${esc(c.note)}</p>
+    <div class="trim">
+      <div class="trim-lbls"><span>Base ${HC.trimWord} ${ML.money(c.price)}</span><span>Top ${HC.trimWord} ${ML.money(c.top)}</span></div>
+      <input type="range" id="trimRange" min="0" max="100" step="1" value="${Math.round(detailT*100)}" aria-label="Trim level" ${c.top===c.price?'disabled':''}>
+      <div class="trim-val" id="dTrimVal">${d.trimVal}</div>
+    </div>
+    <div id="dWorld" ${CC==='ALL'?'':'hidden'}>${d.world}</div>
+    <div id="dSticker">${d.sticker}</div>
+    <div class="two">
+      <div class="panel" id="dPay">${d.pay}</div>
+      <div class="panel"><h4>Est. yearly fuel or charging</h4>${fuelLine}</div>
+    </div>
+    <div class="panel"><h4>${HCC==='US'?'EPA efficiency':'Efficiency'}</h4>${effPanel(c)}${evNote?`<p class="fine">${evNote}</p>`:''}</div>
+    <div class="panel"><h4>Why this price band</h4><p class="sm">${MKT_TXT[HCC][c.mkt][1]}</p><p class="fine">${industry} Current offers are on ${esc(c.make)}’s website.</p></div>
+    <div class="dlg-actions"><button class="btn primary" type="button" id="dCmpBtn">Add to compare</button><button class="btn" type="button" data-close>Close</button></div>`;
+  updateDetailCmpBtn();
+  const tr = $('trimRange');
+  if (tr) tr.addEventListener('input', e => { detailT = +e.target.value/100; updateDetailPrice(); });
+  $('dCmpBtn').addEventListener('click', () => { toggleCompare(c.id); updateDetailCmpBtn(); });
+}
+
+/* ===== compare ===== */
+function toggleCompare(id){
+  const i = compare.indexOf(id);
+  if (i>=0) compare.splice(i,1);
+  else { if (compare.length>=4){ toast('Compare holds four at a time. Remove one first.'); return; } compare.push(id); }
+  store('cmp_'+CC, compare);
+  document.querySelectorAll(`[data-cmp="${id}"]`).forEach(b => { const on = compare.includes(id); b.setAttribute('aria-pressed', on); b.textContent = on ? '✓ Comparing' : '+ Compare'; });
+  updateCmpBar();
+}
+function openCompare(){
+  const cs = compare.map(id=>CARS[id]);
+  const row = (label, f, cls) => `<tr><td>${label}</td>${cs.map(c=>`<td class="${cls||''}">${f(c)}</td>`).join('')}</tr>`;
+  $('cTitle').textContent = `Compare ${cs.length}`;
+  $('cBody').innerHTML = `${cs.length>2 || innerWidth<400 ? '<p class="cmp-hint">Swipe the table sideways to see every car</p>' : ''}<div class="cmp-wrap"><table class="cmp-t">
+    <thead><tr><th></th>${cs.map(c=>`<th>${esc(c.model)}<small>${esc(c.make)} · ${c.year}</small></th>`).join('')}</tr></thead>
+    <tbody>
+    ${CC==='ALL' ? row('Country', c=>CC_NAME[c.cc]) : ''}
+    ${row('Type', c=>`${BODY_LABEL[c.body]||c.body} · ${c.size}`)}
+    ${row('Fuel', c=>c.fuels.map(fuelLbl).join(' / '))}
+    ${row(C.cardPriceLabel, c=>TOP(c)>P(c)?`${money(P(c))} – ${money(TOP(c))}`:money(P(c)), 'num')}
+    ${CC==='ALL' ? row('Home-market price', c=>c.top>c.price?`${MONEY[c.cc].money(c.price)} – ${MONEY[c.cc].money(c.top)}`:MONEY[c.cc].money(c.price), 'num') : ''}
+    ${CC==='US' ? row('Destination', c=>money(c.dest), 'num') : CC==='IN' ? row('GST rate', c=>c.gst+'%', 'num') : ''}
+    ${row(`${C.otdLabel} (${esc(CC==='ALL'?'home region, '+WCUR:regionName(CC, S.state))})`, c=>{const o=bd(c,c.price); return `${money(o.lo)} – ${money(o.hi)}`;}, 'num')}
+    ${row('Est. monthly', c=>{const o=bd(c,c.price); return money(monthlyPay((o.lo+o.hi)/2, CC==='ALL'?DEF_A[c.cc]:A))+'/mo';}, 'num')}
+    ${row('Base price per hp (peak power)', c=>money(P(c)/c.hp), 'num')}
+    ${row('Efficiency', c=>effShort(c, CC))}
+    ${row('Yearly fuel', c=>{const f=annualFuel(c); return f==null?'n/a':money(f);}, 'num')}
+    ${row(`Power (${C.powerUnit})`, c=>c.hp.toLocaleString(), 'num')}
+    ${row('Seats', c=>c.seats, 'num')}
+    ${row('Drivetrain', c=>esc(c.drive))}
+    ${row('Market', c=>MKT_TXT[CC==='ALL'?c.cc:CC][c.mkt][0])}
+    ${row('Notes', c=>esc(c.note))}
+    ${row('', c=>`<button class="rm" type="button" data-rm="${c.id}">Remove</button>`)}
+    </tbody></table></div>`;
+  $('cBody').querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click', ()=>{ toggleCompare(+b.dataset.rm); if (compare.length<2){ $('dlgCompare').close(); } else openCompare(); render(); }));
+  $('cBody').scrollTop = 0;
+  if (!$('dlgCompare').open) $('dlgCompare').showModal();
+}
+
+/* ===== toast ===== */
+let toastT;
+function toast(msg){ let t = document.querySelector('.toast'); if (!t){ t = document.createElement('div'); t.className='toast'; t.setAttribute('role','status'); document.body.appendChild(t);} t.textContent = msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{t.hidden=true;},3200); }
+
+/* ===== country-specific chrome ===== */
+function effOut(v){ if (!v) return 'Any'; const u = C.eff.unit; if (u==='mpg' && CC!=='UK') return v+' mpg'; if (u==='mpg') return v+' mpg UK / '+Math.round(v*0.8327)+' US'; if (u==='kmpl' || u==='km/L') return v+' '+u+' / '+usMpg(100/v)+' mpg'; if (u==='L/100km') return v+' L/100km / '+usMpg(v)+' mpg'; return v+' '+u; }
+function setPressed(container, pred){ container.querySelectorAll('[aria-pressed]').forEach(b => b.setAttribute('aria-pressed', pred(b))); }
+function refreshPriceUI(){
+  $('priceLbl').textContent = C.priceLabel;
+  $('pmin').placeholder = 'Min ' + C.priceInputLabel; $('pmax').placeholder = 'Max ' + C.priceInputLabel;
+  const step = C.priceUnit>=1000 ? (C.priceUnit>=100000 ? 0.5 : 1) : 1000; $('pmin').step = step; $('pmax').step = step;
+  $('pricePresets').innerHTML = C.presets.map(([mn,mx,l])=>`<button class="opt" type="button" data-min="${mn}" data-max="${mx}">${l}</button>`).join('');
+  const wb = $('wBudget'); if (wb) wb.innerHTML = C.wizardBudgets.map(([v,l])=>`<button class="opt" type="button" data-v="${v}" aria-pressed="false">${l}</button>`).join('');
+}
+function buildChrome(){
+  document.documentElement.setAttribute('data-country', CC);
+  document.querySelectorAll('.ctab').forEach(b => b.setAttribute('aria-selected', b.dataset.country===CC));
+  const tabs = $('countryTabs'), tab = tabs.querySelector(`.ctab[data-country="${CC}"]`);
+  if (tab) tabs.scrollLeft = Math.max(0, tab.offsetLeft - tabs.offsetLeft - (tabs.clientWidth - tab.offsetWidth)/2);   // keep the active country visible on phones
+  $('pageTitle').innerHTML = `CarFinder <span>${C.title}</span> 2026`;
+  $('lede').textContent = C.lede;
+  $('optMpg').textContent = C.eff.sort;
+  const bodies = BODY_ORDER.filter(b => CARS.some(c => c.body===b));
+  $('bodyChips').innerHTML = `<button class="chip" type="button" data-body="" aria-pressed="true">All types</button>` + bodies.map(b=>`<button class="chip" type="button" data-body="${b}" aria-pressed="false">${BODY_PLURAL[b]||b}</button>`).join('');
+  const fuels = FUEL_ORDER.filter(f => CARS.some(c => c.fuels.includes(f)));
+  $('fuelChips').innerHTML = `<button class="chip fuel" type="button" data-fuel="" aria-pressed="true">Any fuel</button>` + fuels.map(f=>`<button class="chip fuel" type="button" data-fuel="${f}" aria-pressed="false">${fuelLbl(f)}</button>`).join('');
+  refreshPriceUI();
+  $('sizeOpts').innerHTML = C.sizes.map(s=>`<button class="opt" type="button" data-v="${s}" aria-pressed="false">${s}</button>`).join('');
+  $('effLbl').textContent = C.eff.label; $('effHint').textContent = C.eff.hint;
+  $('mpg').max = C.eff.max; $('mpg').step = C.eff.step;
+  $('rng').max = C.rng.max; $('rng').step = C.rng.step;
+  $('yearGroup').hidden = CC!=='US'; $('newGroup').hidden = CC==='US' || CC==='ALL';
+  $('countryGroup').hidden = CC!=='ALL'; $('unitsGroup').hidden = CC!=='ALL';
+  if (CC==='ALL'){
+    $('countryOpts').innerHTML = ORDER.filter(x=>x!=='ALL').map(x=>`<button class="opt" type="button" data-v="${x}" aria-pressed="false">${CC_NAME[x]}</button>`).join('');
+    WUNIT = load('wunit','l100'); if (!WORLD_UNITS[WUNIT]) WUNIT = 'l100'; $('wunit').value = WUNIT; applyWorldUnits();
+    $('effLbl').textContent = C.eff.label; $('effHint').textContent = C.eff.hint; $('mpg').max = C.eff.max; $('mpg').step = C.eff.step; $('rng').max = C.rng.max; $('rng').step = C.rng.step; $('optMpg').textContent = C.eff.sort;
+  }
+  // region select (currency select on the World tab)
+  const def = regionDefault(CC);
+  $('state').innerHTML = `<option value="${def}">${C.statePrompt}</option>` + regionsFor(CC).map(([k,l])=>`<option value="${k}">${esc(l)}</option>`).join('');
+  S.state = load('state_'+CC, def); if (![...$('state').options].some(o=>o.value===S.state)) S.state = def; $('state').value = S.state;
+  if (CC==='ALL'){ WCUR = S.state; worldPrices(); worldPresets(); refreshPriceUI(); }
+  $('assume').hidden = Object.keys(C.assume).length===0;
+  // makes
+  const makes = [...new Set(CARS.map(c=>c.make))].sort((a,b)=>a.localeCompare(b));
+  $('makes').innerHTML = makes.map(m=>`<label><input type="checkbox" value="${esc(m)}"><span>${esc(m)}</span></label>`).join('');
+  // assumptions
+  A = {}; Object.entries(C.assume).forEach(([k,[l,d]]) => A[k] = d);
+  const savedA = load('assume_'+CC, null); if (savedA && typeof savedA==='object') Object.keys(A).forEach(k=>{ if (typeof savedA[k]==='number' && savedA[k]>=0) A[k]=savedA[k]; });
+  $('assumeGrid').innerHTML = Object.entries(C.assume).map(([k,[l,d,st]])=>`<label>${l} <input type="number" id="a_${k}" step="${st}" min="0" value="${A[k]}"></label>`).join('');
+  Object.keys(C.assume).forEach(k => $('a_'+k).addEventListener('change', e => { const v = parseFloat(e.target.value); if (!isNaN(v) && v>=0){ A[k]=v; store('assume_'+CC, A); render(); if (detailCar && $('dlgDetail').open) renderDetail(); } }));
+  // compare
+  const savedCmp = load('cmp_'+CC, []); compare = Array.isArray(savedCmp) ? savedCmp.filter(i=>Number.isInteger(i) && CARS[i]).slice(0,4) : [];
+  // glossary + about
+  $('gBody').innerHTML = `<dl class="gloss">${GLOSS[CC].map(([t,d])=>`<dt>${t}</dt><dd>${d}</dd>`).join('')}</dl>`;
+  $('about').innerHTML = ABOUT[CC];
+  // wizard
+  $('wBody').innerHTML = `
+    <div class="q"><h3>1. Total budget, taxes and fees included</h3><div class="opts" id="wBudget">${C.wizardBudgets.map(([v,l])=>`<button class="opt" type="button" data-v="${v}" aria-pressed="false">${l}</button>`).join('')}</div></div>
+    <div class="q"><h3>2. What will it mostly do?</h3><div class="opts" id="wUse">
+      <button class="opt" type="button" data-v="commute" aria-pressed="false">Commuting and errands</button>
+      <button class="opt" type="button" data-v="family" aria-pressed="false">Hauling the family (3 rows)</button>
+      <button class="opt" type="button" data-v="work" aria-pressed="false">${C.wizardWork}</button>
+      <button class="opt" type="button" data-v="fun" aria-pressed="false">Being fun to drive</button>
+      <button class="opt" type="button" data-v="trips" aria-pressed="false">Highway trips in comfort</button>
+      <button class="opt" type="button" data-v="all" aria-pressed="false">A bit of everything</button></div></div>
+    <div class="q"><h3>3. Fuel</h3><div class="opts" id="wFuel">${C.wizardFuels.map(([v,l])=>`<button class="opt" type="button" data-v="${v}" aria-pressed="false">${l}</button>`).join('')}</div></div>
+    <div class="q"><h3>4. ${C.wizardAwd}</h3><div class="opts" id="wAwd"><button class="opt" type="button" data-v="awd" aria-pressed="false">Yes, I want AWD or 4WD</button><button class="opt" type="button" data-v="any" aria-pressed="false">No, doesn’t matter</button></div></div>
+    <div class="dlg-actions"><button class="btn primary" id="wGo" type="button">Show my matches</button></div>
+    <p class="fine">This sets the filters for you. You can loosen or change any of them afterward.</p>`;
+  const W = {budget:null, use:null, fuel:null, awd:null};
+  const wire = (id, key) => $(id).addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; W[key] = b.dataset.v; setPressed($(id), x => x===b); });
+  wire('wBudget','budget'); wire('wUse','use'); wire('wFuel','fuel'); wire('wAwd','awd');
+  $('wGo').addEventListener('click', () => {
+    resetS(); $('q').value='';
+    const b = +(W.budget||0); if (b) S.pmax = Math.round(b*C.budgetShare*(CC==='ALL' ? FX[WCUR] : 1));
+    const u = C.wizardUse[W.use]; if (u){ (u.body||[]).forEach(x=>S.body.add(x)); (u.size||[]).forEach(x=>S.size.add(x)); if (u.seats) S.seats = u.seats; if (u.sort) S.sort = u.sort; }
+    if (W.fuel==='cheap') S.sort='fuel'; else if (W.fuel) S.fuel.add(W.fuel);
+    if (W.awd==='awd') S.drive='awd';
+    $('sort').value = S.sort; syncChips(); page=1; render();
+    $('dlgWizard').close();
+    toast(`${lastList.length} vehicles fit your answers. Loosen any filter to see more.`);
+    window.scrollTo({top: $('toolbar').offsetTop, behavior:'smooth'});
+  });
+}
+function syncChips(){
+  setPressed($('bodyChips'), b => b.dataset.body==='' ? S.body.size===0 : S.body.has(b.dataset.body));
+  setPressed($('fuelChips'), b => b.dataset.fuel==='' ? S.fuel.size===0 : S.fuel.has(b.dataset.fuel));
+  setPressed($('sizeOpts'), b => S.size.has(b.dataset.v));
+  setPressed($('clsOpts'), b => S.cls.has(b.dataset.v));
+  $('pmin').value = S.pmin ? S.pmin/C.priceUnit : ''; $('pmax').value = S.pmax ? S.pmax/C.priceUnit : '';
+  $('seats').value = S.seats; $('drive').value = S.drive; $('sort').value = S.sort;
+  $('mpg').value = S.eff; $('mpgOut').textContent = effOut(S.eff);
+  $('rng').value = S.rng; $('rngOut').textContent = S.rng ? (C.rng.unit==='km' ? S.rng+' km / '+usMi(S.rng)+' mi' : S.rng+' '+C.rng.unit) : 'Any';
+  $('makes').querySelectorAll('input').forEach(i => i.checked = S.make.has(i.value));
+  if (CC==='ALL') setPressed($('countryOpts'), b => S.countries.has(b.dataset.v));
+  $('y2025').checked = S.years[2025]; $('y2026').checked = S.years[2026]; $('y2027').checked = S.years[2027]; $('onlyNew').checked = S.onlyNew; $('showEst').checked = S.est;
+}
+function switchCountry(cc){
+  CC = cc; C = COUNTRIES[cc]; CARS = DATA[cc]; M = MONEY[cc]; store('country', cc);
+  resetS(); $('q').value=''; page = 1; detailCar = null;
+  buildChrome(); syncChips(); render();
+}
+
+/* ===== wiring (once) ===== */
+function init(){
+  $('countryTabs').innerHTML = ORDER.map(cc => `<button class="ctab" type="button" role="tab" data-country="${cc}" aria-selected="false">${COUNTRIES[cc].name} <small>${DATA[cc].length.toLocaleString('en-US')}</small></button>`).join('');
+  document.querySelectorAll('.ctab').forEach(b => b.addEventListener('click', () => { if (b.dataset.country!==CC){ switchCountry(b.dataset.country); window.scrollTo({top:0}); } }));
+  $('state').addEventListener('change', e => { S.state = e.target.value; store('state_'+CC, S.state); if (CC==='ALL'){ WCUR = S.state; worldPrices(); worldPresets(); refreshPriceUI(); S.pmin = 0; S.pmax = 0; syncChips(); } render(); if (detailCar && $('dlgDetail').open) renderDetail(); });
+  // phones: the state picker gets its own row under the sticky search bar; wider screens keep it in the toolbar
+  const mqPhone = matchMedia('(max-width:639px)'), mqWide = matchMedia('(min-width:960px)');
+  const placeState = () => { (mqPhone.matches ? $('stateRow') : $('toolbar')).appendChild($('stateWrap')); };
+  placeState(); mqPhone.addEventListener('change', placeState);
+  $('countryOpts').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; const v=b.dataset.v; if (S.countries.has(v)) S.countries.delete(v); else S.countries.add(v); syncChips(); page=1; render(); });
+  $('wunit').addEventListener('change', e => { WUNIT = e.target.value; store('wunit', WUNIT); applyWorldUnits(); $('effLbl').textContent = C.eff.label; $('effHint').textContent = C.eff.hint; $('mpg').max = C.eff.max; $('mpg').step = C.eff.step; $('rng').max = C.rng.max; $('rng').step = C.rng.step; $('optMpg').textContent = C.eff.sort; S.eff = 0; S.rng = 0; syncChips(); page=1; render(); });
+  $('makes').addEventListener('change', e => { const v=e.target.value; if (e.target.checked) S.make.add(v); else S.make.delete(v); page=1; render(); });
+  $('clearMakes').addEventListener('click', () => { S.make.clear(); syncChips(); page=1; render(); });
+  let qt; $('q').addEventListener('input', e => { clearTimeout(qt); qt = setTimeout(()=>{ S.q = e.target.value.trim().toLowerCase(); page=1; render(); }, 150); });
+  $('q').addEventListener('keydown', e => { if (e.key==='Enter') e.target.blur(); });   // Enter dismisses the phone keyboard
+  $('sort').addEventListener('change', e => { S.sort = e.target.value; page=1; render(); });
+  $('bodyChips').addEventListener('click', e => { const b = e.target.closest('[data-body]'); if (!b) return; const v=b.dataset.body; if (v==='') S.body.clear(); else if (S.body.has(v)) S.body.delete(v); else S.body.add(v); syncChips(); page=1; render(); });
+  $('fuelChips').addEventListener('click', e => { const b = e.target.closest('[data-fuel]'); if (!b) return; const v=b.dataset.fuel; if (v==='') S.fuel.clear(); else if (S.fuel.has(v)) S.fuel.delete(v); else S.fuel.add(v); syncChips(); page=1; render(); });
+  $('sizeOpts').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; const v=b.dataset.v; if (S.size.has(v)) S.size.delete(v); else S.size.add(v); syncChips(); page=1; render(); });
+  $('clsOpts').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; const v=b.dataset.v; if (S.cls.has(v)) S.cls.delete(v); else S.cls.add(v); syncChips(); page=1; render(); });
+  const priceChange = () => { S.pmin = Math.max(0, (parseFloat($('pmin').value)||0)*C.priceUnit); S.pmax = Math.max(0, (parseFloat($('pmax').value)||0)*C.priceUnit); page=1; render(); };
+  $('pmin').addEventListener('change', priceChange); $('pmax').addEventListener('change', priceChange);
+  $('clearPrice').addEventListener('click', () => { S.pmin=0; S.pmax=0; syncChips(); page=1; render(); });
+  $('pricePresets').addEventListener('click', e => { const b = e.target.closest('[data-min]'); if (!b) return; S.pmin = +b.dataset.min; S.pmax = +b.dataset.max; syncChips(); page=1; render(); });
+  $('seats').addEventListener('change', e => { S.seats = +e.target.value; page=1; render(); });
+  $('drive').addEventListener('change', e => { S.drive = e.target.value; page=1; render(); });
+  $('mpg').addEventListener('input', e => { S.eff = +e.target.value; $('mpgOut').textContent = effOut(S.eff); page=1; renderSoon(); });
+  $('rng').addEventListener('input', e => { S.rng = +e.target.value; $('rngOut').textContent = S.rng ? (C.rng.unit==='km' ? S.rng+' km / '+usMi(S.rng)+' mi' : S.rng+' '+C.rng.unit) : 'Any'; page=1; renderSoon(); });
+  ['y2025','y2026','y2027'].forEach(id => $(id).addEventListener('change', e => { S.years[+id.slice(1)] = e.target.checked; page=1; render(); }));
+  $('onlyNew').addEventListener('change', e => { S.onlyNew = e.target.checked; page=1; render(); });
+  $('showEst').addEventListener('change', e => { S.est = e.target.checked; page=1; render(); });
+  $('resetAll').addEventListener('click', () => { resetS(); $('q').value=''; syncChips(); page=1; render(); });
+  const openF = () => { $('filters').classList.add('open'); document.body.classList.add('no-scroll'); $('btnFilters').setAttribute('aria-expanded','true'); $('filters').scrollTop = 0; };
+  const closeF = () => { $('filters').classList.remove('open'); document.body.classList.remove('no-scroll'); $('btnFilters').setAttribute('aria-expanded','false'); };
+  $('btnFilters').addEventListener('click', openF);
+  $('closeFilters').addEventListener('click', closeF); $('applyFilters').addEventListener('click', closeF);
+  mqWide.addEventListener('change', e => { if (e.matches) closeF(); });          // rotating a tablet to the wide layout must not leave the page scroll-locked
+  document.addEventListener('keydown', e => { if (e.key==='Escape' && $('filters').classList.contains('open')) closeF(); });
+  $('btnMore').addEventListener('click', () => { page++; renderMore(); });
+  if ('IntersectionObserver' in window) new IntersectionObserver(es => { if (es.some(x=>x.isIntersecting) && !$('moreRow').hidden && page*PAGE < 150) { page++; renderMore(); } }, {rootMargin:'600px 0px'}).observe($('moreRow'));
+  $('grid').addEventListener('click', e => {
+    const d = e.target.closest('[data-detail]'); if (d) { openDetail(+d.dataset.detail); return; }
+    const c = e.target.closest('[data-cmp]'); if (c) { toggleCompare(+c.dataset.cmp); return; }
+    const card = e.target.closest('.card'); if (card && !e.target.closest('button,a')) openDetail(+card.dataset.id);   // the whole card is a tap target on phones
+  });
+  // back to top after a long scroll
+  let ttRaf = 0; addEventListener('scroll', () => { if (ttRaf) return; ttRaf = requestAnimationFrame(() => { ttRaf = 0; $('toTop').classList.toggle('show', scrollY > 1200); }); }, {passive:true});
+  $('toTop').addEventListener('click', () => scrollTo({top:0, behavior:'smooth'}));
+  $('btnCompare').addEventListener('click', openCompare);
+  $('btnClearCmp').addEventListener('click', () => { compare = []; store('cmp_'+CC, compare); render(); });
+  document.querySelectorAll('dialog').forEach(d => { d.addEventListener('click', e => { if (e.target.closest('[data-close]')) d.close(); else if (e.target === d) d.close(); }); });
+  $('btnGloss').addEventListener('click', () => $('dlgGloss').showModal());
+  $('btnWizard').addEventListener('click', () => $('dlgWizard').showModal());
+  const savedCC = load('country','US'); CC = COUNTRIES[savedCC] ? savedCC : 'US'; C = COUNTRIES[CC]; CARS = DATA[CC]; M = MONEY[CC];
+  buildChrome(); syncChips(); render();
+}
+init();
+</script>

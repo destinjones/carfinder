@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04060a">
+<title>CarFinder 2026 · every new car, what it really costs</title>
+<link rel="canonical" href="https://cwbhood.github.io/carfinder/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta name="author" content="Destin Jones">
+<meta name="description" content="A free, open source car finder for 11 countries: every new car and truck on sale with its list price, what dealers really charge, and the drive-off price for your state or city with taxes and fees in. Filters, compare, MPG and EV range. No account, no ads.">
+<link rel="icon" href="brand/emblem/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="brand/emblem/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="CarFinder 2026">
+<meta property="og:url" content="https://cwbhood.github.io/carfinder/">
+<meta property="og:title" content="CarFinder 2026 · every new car, what it really costs">
+<meta property="og:description" content="2,729 new cars and trucks across 11 countries: list price, dealer price, and the drive-off price for your state with taxes and fees in. Free, open source, runs in your browser.">
+<meta property="og:image" content="https://cwbhood.github.io/carfinder/brand/social/og-1200x630.png">
+<meta property="og:image:width" content="1200"><meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="CarFinder 2026: a phone showing the US car list with sticker and drive-off prices">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="CarFinder 2026 · every new car, what it really costs">
+<meta name="twitter:description" content="2,729 new cars and trucks across 11 countries with list, dealer and drive-off prices for your state. Free, open source, in your browser.">
+<meta name="twitter:image" content="https://cwbhood.github.io/carfinder/brand/social/og-1200x630.png">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@graph":[
+ {"@type":"WebSite","@id":"https://cwbhood.github.io/carfinder/#site","name":"CarFinder 2026","url":"https://cwbhood.github.io/carfinder/","description":"Every new car and truck on sale in 11 countries with list, dealer and on-road prices for your state or city.","publisher":{"@id":"https://cwbhood.github.io/carfinder/about.html#destin"}},
+ {"@type":"WebApplication","name":"CarFinder 2026","applicationCategory":"ReferenceApplication","operatingSystem":"Any (web browser)","url":"https://cwbhood.github.io/carfinder/carfinder.html","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},
+  "description":"2,729 new cars and trucks across the USA, India, China, the UK, Australia, Mexico, Spain, Thailand, Russia, Brazil and Canada, each with list price, typical dealer price and an estimated on-road price for the buyer's state or city.","codeRepository":"https://github.com/cwbhood/carfinder","license":"https://opensource.org/licenses/MIT","creator":{"@id":"https://cwbhood.github.io/carfinder/about.html#destin"},"screenshot":"https://cwbhood.github.io/carfinder/brand/social/og-1200x630.png"},
+ {"@type":"Person","@id":"https://cwbhood.github.io/carfinder/about.html#destin","name":"Destin Jones","url":"https://cwbhood.github.io/carfinder/about.html","sameAs":["https://github.com/cwbhood","https://cwbhood.github.io/open-overwatch/about.html"]}
+]}
+</script>
+<link rel="stylesheet" href="brand/fonts/fonts.css">
+<style>
+:root{
+  --bg:#04060a; --panel:#080c12; --panel-2:#0e141c; --line:#182230; --line-strong:#26343f;
+  --ink:#e6edf3; --ink-dim:#8b9bab; --ink-faint:#55667a; --accent:#7fa8ff; --accent-dim:rgba(127,168,255,.16); --deal:#66d39c; --hot:#ff9070; --tag:#ecc85c;
+  --display:"Big Shoulders Display","Arial Narrow",sans-serif; --body:"Barlow",system-ui,-apple-system,"Segoe UI",sans-serif; --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --gut:clamp(16px,4vw,56px); --max:1140px; color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:72px}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.6 var(--body);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit} img{display:block;max-width:100%;height:auto}
+.skip{position:absolute;left:-999px;top:8px;background:var(--accent);color:#04060a;padding:8px 12px;z-index:200;border-radius:6px} .skip:focus{left:8px}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 var(--gut)}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.22em;text-transform:uppercase;color:var(--accent);display:flex;align-items:center;gap:10px}
+.eyebrow::before{content:"";width:22px;height:1px;background:currentColor;flex:0 0 auto}
+h1,h2,h3{font-family:var(--display);font-weight:900;text-transform:uppercase;letter-spacing:.01em;line-height:.95;margin:0;text-wrap:balance}
+h1{font-size:clamp(44px,6.2vw,80px)} h2{font-size:clamp(34px,5vw,60px)} h3{font-size:24px}
+h1 span,h2 span{color:var(--accent)}
+nav{position:sticky;top:0;z-index:50;background:rgba(4,6,10,.84);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:20px;min-height:64px;max-width:none}
+.brand{display:flex;align-items:center;gap:12px;text-decoration:none;font:900 21px/1 var(--display);letter-spacing:.08em;text-transform:uppercase}
+.brand img{width:32px;height:32px}
+nav .links{display:flex;gap:22px;margin-left:auto;font:500 13px var(--mono);letter-spacing:.12em;text-transform:uppercase;align-items:center}
+nav .links a{text-decoration:none;color:var(--ink-dim);padding:8px 0} nav .links a:hover{color:var(--ink)}
+nav .links a.go{color:#04060a;background:var(--accent);padding:10px 14px;border-radius:6px;font-weight:600}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:14px 22px;min-height:48px;border:1px solid var(--line-strong);background:rgba(8,12,18,.7);color:var(--ink);text-decoration:none;font:600 13px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;transition:background .2s,transform .2s;border-radius:6px}
+.btn:hover{background:var(--panel-2);transform:translateY(-1px)} .btn.primary{background:var(--accent);color:#04060a;border-color:var(--accent);box-shadow:0 0 36px rgba(127,168,255,.28)} .btn.primary:hover{background:#a7c3ff}
+.hero{padding:clamp(56px,8vw,104px) 0 clamp(36px,5vw,64px);background:radial-gradient(900px 460px at 85% 0%,rgba(127,168,255,.12),transparent 70%),radial-gradient(700px 400px at 0% 100%,rgba(102,211,156,.07),transparent 70%);position:relative;overflow:hidden}
+.hero .wrap{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:clamp(28px,5vw,64px);align-items:center}
+.hero p.sub{font:500 14px/1.5 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin:18px 0 22px}
+.hero .lede{font-size:clamp(18px,2vw,21px);color:var(--ink);max-width:34em}
+.hero .lede+.lede{color:var(--ink-dim);margin-top:14px}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+.hero .fine{font:500 12px/1.6 var(--mono);color:var(--ink-faint);margin-top:16px;letter-spacing:.04em}
+/* device frames */
+.devices{position:relative;min-height:420px}
+.browser{border:1px solid var(--line-strong);border-radius:12px;overflow:hidden;background:#0f1317;box-shadow:0 30px 80px rgba(0,0,0,.55);margin-left:0;width:min(100%,560px)}
+.browser .bar{height:30px;background:#0b1016;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:0 12px}
+.browser .bar i{width:9px;height:9px;border-radius:50%;background:#26343f;display:block}
+.browser .bar span{margin-left:10px;font:500 10.5px var(--mono);color:var(--ink-faint);letter-spacing:.06em;background:#131a22;padding:4px 10px;border-radius:4px}
+.phone{position:absolute;right:-6px;bottom:-30px;width:clamp(150px,30%,190px);border-radius:26px;border:2px solid var(--line-strong);background:#0f1317;box-shadow:0 0 0 6px #090d12,0 30px 60px rgba(0,0,0,.6);overflow:hidden}
+.phone img{width:100%}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+.stats div{background:var(--bg);padding:20px 22px} .stats b{display:block;font:900 clamp(30px,4vw,48px)/1 var(--display);color:var(--accent)} .stats span{font:500 11px/1.4 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim)}
+section{padding:clamp(54px,8vw,100px) 0;border-top:1px solid var(--line)}
+section>.wrap>.eyebrow{margin-bottom:16px} section h2{margin-bottom:14px}
+.intro{color:var(--ink-dim);max-width:46em;font-size:18px;margin:0 0 36px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+.card{background:var(--bg);padding:26px;position:relative;min-width:0}
+.card h3{color:var(--c,var(--ink));margin-bottom:10px} .card p{color:var(--ink-dim);margin:0;font-size:16px}
+.card .tag{font:500 11px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-faint);display:block;margin-bottom:12px}
+.card .n{position:absolute;top:22px;right:22px;font:900 40px/1 var(--display);color:var(--line-strong)}
+.card.shot{padding:0;display:flex;flex-direction:column}
+.card.shot img{width:100%;height:auto;border-bottom:1px solid var(--line)}
+.card.shot div{padding:22px 26px}
+/* how to use */
+.steps{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,420px);gap:clamp(24px,4vw,56px);align-items:start}
+.steps ol{list-style:none;margin:0;padding:0;counter-reset:s}
+.steps li{counter-increment:s;display:grid;grid-template-columns:52px minmax(0,1fr);gap:4px 16px;padding:18px 0;border-top:1px solid var(--line)}
+.steps li > *{grid-column:2} .steps li::before{grid-column:1;grid-row:1 / span 2}
+.steps li:last-child{border-bottom:1px solid var(--line)}
+.steps li::before{content:counter(s,decimal-leading-zero);font:900 34px/1 var(--display);color:var(--accent);padding-top:2px}
+.steps li b{display:block;font:700 19px/1.25 var(--body);color:var(--ink);margin-bottom:4px} .steps li p{margin:0;color:var(--ink-dim);font-size:16px}
+.steps li kbd{font:500 12px var(--mono);background:var(--panel-2);border:1px solid var(--line-strong);border-radius:4px;padding:2px 6px;color:var(--ink)}
+.phone-lg{border-radius:34px;border:2px solid var(--line-strong);background:#0f1317;box-shadow:0 0 0 8px #090d12,0 30px 70px rgba(0,0,0,.6);overflow:hidden;width:min(100%,360px);justify-self:end;position:sticky;top:90px}
+.phone-lg img{width:100%}
+/* card anatomy */
+.anatomy{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(24px,4vw,56px);align-items:center}
+.anatomy dl{margin:0;display:grid;gap:14px}
+.anatomy dt{font:700 16px/1.3 var(--body);color:var(--ink)} .anatomy dt span{font:500 11px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-right:8px}
+.anatomy dd{margin:4px 0 0;color:var(--ink-dim);font-size:15.5px}
+.anatomy img{border:1px solid var(--line-strong);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+/* countries */
+.countries{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+.country{background:var(--bg);padding:22px 24px;min-width:0}
+.country .cc{font:900 12px/1 var(--display);letter-spacing:.2em;color:#04060a;background:var(--ink);padding:5px 7px;border-radius:4px;display:inline-block;margin-bottom:12px}
+.country h3{font-size:22px;margin-bottom:6px} .country .basis{font:500 12px/1.5 var(--mono);letter-spacing:.06em;color:var(--accent);margin:0 0 8px} .country p{margin:0;color:var(--ink-dim);font-size:15px}
+.country small{display:block;margin-top:10px;font:500 11px/1.5 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--ink-faint)}
+/* built */
+.method{display:grid;grid-template-columns:repeat(2,1fr);gap:28px 44px} .method h3{font-size:22px;color:var(--accent);margin-bottom:8px} .method p{margin:0;color:var(--ink-dim)}
+pre.code{background:var(--panel);border:1px solid var(--line-strong);padding:18px 22px;font:500 13.5px/1.6 var(--mono);color:var(--ink);overflow-x:auto;border-radius:6px;margin:0}
+.warn{border-left:3px solid var(--tag);padding:14px 18px;background:var(--panel);color:var(--ink-dim);margin-top:28px;max-width:60em;font-size:16px}
+.warn b{color:var(--ink)}
+/* maker */
+.maker .wrap{display:grid;grid-template-columns:minmax(220px,300px) minmax(0,1fr);gap:clamp(28px,5vw,64px);align-items:center}
+.portrait{position:relative;width:100%}
+.portrait img{width:100%;height:auto;aspect-ratio:4/5;object-fit:cover;border:1px solid var(--line-strong);filter:saturate(.95);border-radius:6px}
+.portrait::after{content:"";position:absolute;inset:14px -14px -14px 14px;border:1px solid var(--accent-dim);z-index:-1;border-radius:6px}
+.maker p.lede{font-size:clamp(18px,2vw,21px);color:var(--ink);max-width:36em}
+.maker p.sub{color:var(--ink-dim);margin:14px 0 0;max-width:40em}
+footer{border-top:1px solid var(--line);padding:40px 0 60px;font-size:14px;color:var(--ink-faint)}
+footer .wrap{display:grid;grid-template-columns:1fr 1fr;gap:30px} footer p{margin:0 0 8px} footer a{color:var(--ink-dim)}
+@media (max-width:960px){.grid,.countries{grid-template-columns:repeat(2,1fr)}.stats{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:860px){
+  .hero .wrap{grid-template-columns:1fr} .devices{min-height:0;margin-top:10px;padding-bottom:40px;padding-right:40px} .browser{width:100%} .phone{right:0;bottom:0}
+  .steps{grid-template-columns:1fr} .phone-lg{position:static;justify-self:center}
+  .anatomy{grid-template-columns:1fr} .anatomy img{order:-1}
+  .maker .wrap{grid-template-columns:1fr} .portrait{width:min(100%,300px)}
+  .method{grid-template-columns:1fr} footer .wrap{grid-template-columns:1fr}
+  nav .links a:not(.go):nth-child(-n+3){display:none}
+}
+@media (max-width:600px){.grid,.countries{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.brand{font-size:17px}.brand img{width:26px;height:26px}nav .links{gap:12px;font-size:11.5px}nav .links a:not(.go){display:none}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.btn{transition:none}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<nav aria-label="Main">
+  <div class="wrap">
+    <a class="brand" href="./"><img src="brand/emblem/emblem-256.png" alt="">CarFinder</a>
+    <div class="links"><a href="#features">Features</a><a href="#how">How to use</a><a href="#countries">Countries</a><a href="about.html">About</a><a href="https://github.com/cwbhood/carfinder">GitHub</a><a class="go" href="carfinder.html">Open CarFinder</a></div>
+  </div>
+</nav>
+
+<main id="main">
+<header class="hero">
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">Free · open source · 11 countries</div>
+      <h1>Every new car.<br><span>What it really costs.</span></h1>
+      <p class="sub">Sticker · dealer price · drive-off, for your state</p>
+      <p class="lede">CarFinder lists every new car and truck on sale, with the list price, what dealers actually charge for that model right now, and the price you drive off with once your state's taxes and fees are added.</p>
+      <p class="lede">Made for the buyer who doesn't know where to start: filter by what you need, let the four-question helper narrow it down, open any car for a window-sticker style cost breakdown, and compare up to four side by side. It runs in your browser, on a phone too, with no account and no tracking.</p>
+      <div class="cta">
+        <a class="btn primary" href="carfinder.html">Open CarFinder</a>
+        <a class="btn" href="#how">How to use it</a>
+        <a class="btn" href="https://github.com/cwbhood/carfinder">Source on GitHub</a>
+      </div>
+      <p class="fine">Prices compiled 29 September 2026 · estimates to bargain within, not quotes</p>
+    </div>
+    <div class="devices" aria-hidden="true">
+      <div class="browser"><div class="bar"><i></i><i></i><i></i><span>cwbhood.github.io/carfinder</span></div><img src="brand/shots/desktop-us.webp" width="1280" height="800" alt="" fetchpriority="high"></div>
+      <div class="phone"><img src="brand/shots/phone-us-dark.webp" width="390" height="844" alt="" loading="lazy"></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stats" aria-label="CarFinder by the numbers">
+    <div><b>2,729</b><span>cars, SUVs, pickups and vans</span></div>
+    <div><b>11</b><span>countries, plus a World tab</span></div>
+    <div><b>150+</b><span>states, provinces and cities with their own tax rules</span></div>
+    <div><b>0</b><span>accounts, ads or trackers</span></div>
+  </div>
+</div>
+
+<section id="features" aria-labelledby="features-h">
+  <div class="wrap">
+    <div class="eyebrow">What it does</div>
+    <h2 id="features-h">Three prices, <span>not one.</span></h2>
+    <p class="intro">Car sites show you the sticker. Dealers quote you a monthly payment. The number you actually need, what leaves your bank account, is the one nobody prints. CarFinder puts all three on every card.</p>
+    <div class="grid">
+      <article class="card"><span class="tag">On every card</span><h3>List · dealer · drive-off</h3><p>The maker's price from base trim to top, the band dealers really sell that model in this month (at sticker, a little under, or deep discounts), and the estimated total with tax, title and fees for your state.</p></article>
+      <article class="card"><span class="tag">Your state or city</span><h3>Local taxes and fees</h3><p>Pick a US state, an Indian state, a Chinese city, an Australian state, a Mexican estado, a Spanish region, a Russian region, a Brazilian state or a Canadian province, and every price on the page recomputes with its sales tax, road tax, plates, insurance and rebates.</p></article>
+      <article class="card"><span class="tag">Help me choose</span><h3>Four questions</h3><p>Budget with taxes in, what the car will mostly do, fuel, and whether you need all-wheel drive. The helper sets the filters for you; loosen any of them afterwards.</p></article>
+      <article class="card"><span class="tag">Window sticker</span><h3>Every line of the cost</h3><p>Open a car and drag the trim slider from base to fully loaded. The breakdown updates line by line: destination, discount, tax, doc fee, registration, insurance, grants, with a note on what each one is and whether you can negotiate it.</p></article>
+      <article class="card"><span class="tag">Running costs</span><h3>Fuel, charging and the loan</h3><p>Yearly fuel or charging cost at your local prices and distance, an estimated monthly payment, and the assumptions behind them, all editable. Sort by lowest yearly fuel cost or cheapest per horsepower.</p></article>
+      <article class="card"><span class="tag">Compare</span><h3>Four cars side by side</h3><p>Tick up to four cars and compare price, drive-off, monthly, efficiency, power, seats, drivetrain and market notes in one table, on a phone too.</p></article>
+      <article class="card"><span class="tag">Units</span><h3>MPG and miles for everyone</h3><p>Every figure outside the US carries its US-unit twin: 17.4 kmpl / 41 mpg, 543 km / 337 mi range, 53 mpg UK / 44 mpg US. The World tab lets you pick mpg, L/100 km or km/L outright.</p></article>
+      <article class="card"><span class="tag">World tab</span><h3>Every market in one list</h3><p>All 2,729 cars converted to one currency at ECB rates, so you can see what a Seagull costs against a Mirage, rank the cheapest horsepower on Earth, and jump to the home tab for the local rules.</p></article>
+      <article class="card"><span class="tag">Plain English</span><h3>What the terms mean</h3><p>MSRP, destination, doc fee, OTR, ex-showroom, RTO, 落地价, tenencia, IPVA, ОСАГО: each tab has a glossary written for someone buying their first car there.</p></article>
+    </div>
+  </div>
+</section>
+
+<section id="how" aria-labelledby="how-h">
+  <div class="wrap">
+    <div class="eyebrow">How to use it</div>
+    <h2 id="how-h">From “I need a car” <span>to a shortlist.</span></h2>
+    <p class="intro">Nothing to install and nothing to sign up for. Open the page, pick your country, and work down the list.</p>
+    <div class="steps">
+      <ol>
+        <li><b>Pick your country tab</b><p>The tabs across the top switch the whole page: the cars, the price basis (MSRP, ex-showroom, OTR, 指导价, RRP…), the tax rules and the glossary. <kbd>World</kbd> pools every country in one list.</p></li>
+        <li><b>Pick your state or city</b><p>The picker under the search bar (next to it on a desktop) sets the taxes and fees. Every <em>drive-off</em> price on the page recomputes for it. The page remembers your choice.</p></li>
+        <li><b>Narrow it down</b><p>Tap the body-type and fuel chips, or open <kbd>Filters</kbd> for price range, size, brand tier, seats, drivetrain, minimum MPG, minimum electric range and brand. Type a make or model to search. Or press <kbd>Help me choose</kbd> and answer four questions.</p></li>
+        <li><b>Sort by what matters to you</b><p>Price, lowest yearly fuel cost, best MPG, longest electric range, most horsepower, cheapest per horsepower, most seats. On a phone the sort lives behind the ⇅ button next to the search box.</p></li>
+        <li><b>Open a car</b><p>Tap any card for the cost breakdown. Drag the trim slider from base to top trim and watch every line move. The <em>Why this price band</em> panel explains the market for that model and what to ask the dealer.</p></li>
+        <li><b>Compare and decide</b><p>Tap <kbd>+ Compare</kbd> on up to four cards, then <kbd>Compare</kbd> in the bar at the bottom. Remove one, add another, and go back to the list with your filters intact.</p></li>
+        <li><b>Check the terms and the fine print</b><p><kbd>What the terms mean</kbd> explains every word on the page for your country. <em>How these numbers work</em> at the bottom of each tab says exactly what is estimated and how.</p></li>
+      </ol>
+      <div class="phone-lg" aria-hidden="true"><img src="brand/shots/phone-detail-sticker.webp" width="390" height="844" alt="" loading="lazy"></div>
+    </div>
+  </div>
+</section>
+
+<section id="card" aria-labelledby="card-h" style="padding-top:0;border-top:0">
+  <div class="wrap">
+    <div class="eyebrow">Reading a card</div>
+    <h2 id="card-h">What the numbers mean.</h2>
+    <div class="anatomy">
+      <dl>
+        <div><dt><span>01</span>Sticker (MSRP)</dt><dd>The maker's price for the cheapest trim, with the spread up to the top trim and the mandatory destination charge underneath. Outside the US the label changes with the country: ex-showroom, OTR, guide price, RRP, precio de lista, PVP, tabela.</dd></div>
+        <div><dt><span>02</span>Est. drive-off · your state</dt><dd>The range you should expect to pay in total. It starts from the sticker, applies the typical dealer discount or markup for that model, then adds your state's tax, a typical doc fee and registration. Bargain within it; don't accept above it.</dd></div>
+        <div><dt><span>03</span>Efficiency, power, seats, drive</dt><dd>EPA combined mpg or electric range for the US; ARAI, WLTP, CLTC, ADR or NRCan figures elsewhere, each with its mpg and miles twin. The yearly fuel estimate uses your local fuel price and distance.</dd></div>
+        <div><dt><span>04</span>Market badge</dt><dd>Red: sells at or above sticker, expect a wait. Grey-blue: small discounts are typical. Green: big discounts and incentives; this is where the deals are.</dd></div>
+        <div><dt><span>05</span>Tags</dt><dd>Body type and size, fuel, brand tier, plus flags for 2025 leftovers (discounted), 2027 early arrivals, new or updated models, and preliminary pricing that can still change.</dd></div>
+      </dl>
+      <img src="brand/shots/desktop-detail.webp" width="1280" height="800" alt="The detail sheet for a Toyota RAV4 in Texas: trim slider, cost breakdown from MSRP to drive-off, monthly payment and fuel cost panels" loading="lazy">
+    </div>
+  </div>
+</section>
+
+<section id="countries" aria-labelledby="countries-h">
+  <div class="wrap">
+    <div class="eyebrow">Eleven markets, each with its own rules</div>
+    <h2 id="countries-h">The same car, <span>eleven prices.</span></h2>
+    <p class="intro">Each tab starts from the price that country actually publishes and adds what that country actually charges. The rules were researched market by market and are written down in the repository.</p>
+    <div class="countries">
+      <article class="country"><span class="cc">USA</span><h3>United States</h3><p class="basis">414 vehicles · MSRP + destination</p><p>Sales tax by state (with the Connecticut and South Carolina special cases), typical dealer doc fee by state, title and plates. 2025 leftovers and 2027 early arrivals labelled.</p><small>50 states + DC</small></article>
+      <article class="country"><span class="cc">IN</span><h3>India</h3><p class="basis">208 vehicles · ex-showroom (GST in)</p><p>RTO road tax by state, price slab and fuel, with EV waivers; registration, HSRP plates and FASTag; first-year insurance; 1% TCS above ₹10 lakh. GST at the September 2025 slabs.</p><small>States + BH series</small></article>
+      <article class="country"><span class="cc">CN</span><h3>China</h3><p class="basis">188 vehicles · 厂商指导价</p><p>Purchase tax (10%, half for NEVs with the ¥15,000 cap), compulsory and commercial insurance, registration, and the plate: Shanghai's auction, Beijing's lottery, the smaller auctions elsewhere, free green plates for NEVs.</p><small>8 cities + everywhere else</small></article>
+      <article class="country"><span class="cc">UK</span><h3>United Kingdom</h3><p class="basis">280 vehicles · OTR price</p><p>Typical broker and dealer discounts, the Electric Car Grant where the maker and the trim qualify, first-year VED already in the OTR, the Expensive Car Supplement flagged, insurance by region.</p><small>GB + Northern Ireland</small></article>
+      <article class="country"><span class="cc">AU</span><h3>Australia</h3><p class="basis">302 vehicles · RRP before on-roads</p><p>Stamp duty by state formula, 12 months of rego and CTP, plates, dealer delivery, with Luxury Car Tax already inside the RRP and utes exempt.</p><small>6 states + ACT + NT</small></article>
+      <article class="country"><span class="cc">MX</span><h3>Mexico</h3><p class="basis">324 vehicles · precio de lista</p><p>ISAN inside the price, alta de placas by estado, the holograma for the Megalópolis, first-year tenencia where it still applies (EVs and hybrids exempt), typical bonos by model.</p><small>11 estados + otro</small></article>
+      <article class="country"><span class="cc">ES</span><h3>Spain</h3><p class="basis">164 vehicles · PVP (IVA + matriculación)</p><p>Impuesto de matriculación by CO2 band, DGT fee, plates and gestoría, prorated IVTM, Canarias recomputed with IGIC and Ceuta y Melilla with IPSI, Plan Auto+ and the IRPF deduction shown.</p><small>8 regions + Península</small></article>
+      <article class="country"><span class="cc">TH</span><h3>Thailand</h3><p class="basis">211 vehicles · ราคาป้าย</p><p>Excise by CO2 and technology already inside the sticker, DLT registration, first-year annual tax by engine size, พ.ร.บ. compulsory insurance, dealer processing, the EV3.5 subsidy already deducted.</p><small>National rules</small></article>
+      <article class="country"><span class="cc">RU</span><h3>Russia</h3><p class="basis">159 vehicles · РРЦ (VAT in)</p><p>Direct, trade-in and credit benefits by model, dealer add-on packages, the 4,500 ₽ registration duty, first-year ОСАГО by region, transport tax by horsepower and region, the state loan discount for Russian-built cars.</p><small>10 regions + other</small></article>
+      <article class="country"><span class="cc">BR</span><h3>Brazil</h3><p class="basis">233 vehicles · preço de tabela</p><p>Bônus de fábrica by model, emplacamento by state, first-year IPVA prorated with each state's EV and hybrid rules, regional price factor, CNPJ and PcD channels explained.</p><small>11 states + outro</small></article>
+      <article class="country"><span class="cc">CA</span><h3>Canada</h3><p class="basis">246 vehicles · MSRP before freight</p><p>Freight and PDI by brand, A/C tax, green levy, federal luxury tax, HST, GST plus PST or QST (with BC's price tiers), registration, and the federal EVAP rebate plus Quebec, PEI and Yukon rebates taken off.</p><small>10 provinces + territories</small></article>
+      <article class="country"><span class="cc">ALL</span><h3>World</h3><p class="basis">2,729 vehicles · converted</p><p>Every car at its home list price converted at ECB reference rates, on-road computed with its home rules for its default region, a country filter, your choice of currency and efficiency units, and the cheapest-per-horsepower sort.</p><small>11 currencies</small></article>
+    </div>
+  </div>
+</section>
+
+<section id="built" aria-labelledby="built-h">
+  <div class="wrap">
+    <div class="eyebrow">How it's built</div>
+    <h2 id="built-h">One file. <span>No framework.</span></h2>
+    <div class="method">
+      <div><h3>A single HTML page</h3><p>Markup, CSS and plain JavaScript in one self-contained file with the data inlined, so it works from a file:// URL and keeps working offline once loaded. No build tools beyond a 60-line Node script that stitches the parts together.</p></div>
+      <div><h3>Data as JSON, rules as functions</h3><p>Each country's cars are a JSON file with a documented row schema. Each country's taxes and fees are one function that returns the breakdown lines, so a wrong rate is a one-line fix and a pull request.</p></div>
+      <div><h3>Tested before it ships</h3><p><code>node --test</code> validates every row of every dataset, then runs the pricing core for all 44,000 car-and-region combinations and checks known quotes. A headless Chromium pass exercises every tab and control at phone and desktop widths.</p></div>
+      <div><h3>Estimates, labelled as estimates</h3><p>Dealer prices are bands by demand level, not quotes. Taxes follow the published rules on the compile date. Every tab ends with a plain-language note on what was assumed, and models with provisional pricing carry a <em>Preliminary</em> tag.</p></div>
+    </div>
+    <div style="margin-top:34px">
+      <pre class="code" tabindex="0">git clone https://github.com/cwbhood/carfinder
+cd carfinder
+node src/build.js        # stitches src/ + data/ into carfinder.html
+node --test              # schema checks, pricing core, known quotes
+python3 -m http.server   # then open http://localhost:8000/</pre>
+    </div>
+    <p class="warn"><b>Use it as a starting point, not a quote.</b> Prices were compiled on 29 September 2026 from manufacturer price lists and the main listing sites in each country; incentives, fuel prices and exchange rates move monthly and tax rules change with budgets. Always get the out-the-door price in writing from two or three dealers. If you spot a wrong price or rate, <a href="https://github.com/cwbhood/carfinder/issues">open an issue</a> or fix the JSON and send a pull request.</p>
+  </div>
+</section>
+
+<section class="maker" id="maker" aria-labelledby="maker-h">
+  <div class="wrap">
+    <figure class="portrait" style="margin:0">
+      <img src="brand/about/destin-640.webp" srcset="brand/about/destin-320.webp 320w, brand/about/destin-640.webp 640w" sizes="(max-width: 860px) 300px, 300px" width="640" height="800" alt="Portrait of Destin Jones, creator of CarFinder" loading="lazy">
+    </figure>
+    <div>
+      <div class="eyebrow">Made in the open</div>
+      <h2 id="maker-h">By Destin Jones</h2>
+      <p class="lede">I vibe coded CarFinder with Claude. I had the question every first-time buyer has, “what will this actually cost me?”, and instead of googling it fifty times I described the tool I wanted and we built it together: I set the direction and made the calls, Claude did the research and the heavy lifting on the code, and all of it ships here in the open.</p>
+      <p class="sub">Same way I built <a href="https://cwbhood.github.io/open-overwatch/">Open Overwatch</a>, a live map of the whole planet, and <a href="https://cwbhood.github.io/godot-open-rts/">Ironbound</a>, an open source RTS. Read it, fork it, fix a price, take it further.</p>
+      <div class="cta">
+        <a class="btn primary" href="about.html">About the creator</a>
+        <a class="btn" href="https://github.com/cwbhood">GitHub profile</a>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <p><a class="brand" href="./" style="font-size:18px;color:var(--ink)"><img src="brand/emblem/emblem-256.png" alt="" style="width:26px;height:26px">CarFinder 2026</a></p>
+      <p>A free, open source project by <a href="about.html">Destin Jones</a>, vibe coded with Claude. Estimates for awareness while car shopping, not quotes, offers or financial advice. No accounts, no ads, no tracking.</p>
+    </div>
+    <div>
+      <p><a href="carfinder.html">Open CarFinder</a> · <a href="#how">How to use</a> · <a href="#countries">Countries</a> · <a href="about.html">About</a></p>
+      <p><a href="https://github.com/cwbhood/carfinder">Source on GitHub</a> · <a href="https://github.com/cwbhood/carfinder/issues">Report a wrong price</a> · <a href="https://github.com/cwbhood/carfinder/blob/main/LICENSE">MIT licence</a></p>
+      <p>Also by me: <a href="https://cwbhood.github.io/open-overwatch/">Open Overwatch</a> and <a href="https://cwbhood.github.io/godot-open-rts/">Ironbound</a>.</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

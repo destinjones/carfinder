@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use or write about CarFinder, please cite it like this."
+title: "CarFinder 2026"
+abstract: "A free, open source car finder for 11 countries: every new car and truck on sale with its list price, the price dealers really charge, and the on-road price for the buyer's state or city, with filters, comparison and running-cost estimates. One self-contained web page."
+type: software
+authors:
+  - family-names: Jones
+    given-names: Destin
+    website: "https://cwbhood.github.io/carfinder/about.html"
+repository-code: "https://github.com/cwbhood/carfinder"
+url: "https://cwbhood.github.io/carfinder/"
+license: MIT
+date-released: 2026-10-05
+keywords:
+  - cars
+  - car prices
+  - on-road price
+  - taxes and fees
+  - consumer tool
+  - open data
+  - web application
