@@ -23,7 +23,7 @@ jobs:
       - name: Build the app page and check it
         run: |
           node src/build.js
-          node --test test/
+          node --test
       - name: Assemble the site
         run: |
           mkdir -p _site

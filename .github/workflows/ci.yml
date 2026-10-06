@@ -15,7 +15,7 @@ jobs:
       - name: Build is in sync with src/ and data/
         run: node src/build.js --check
       - name: Schema, pricing core, known quotes, links
-        run: node --test test/
+        run: node --test
   browser:
     runs-on: ubuntu-latest
     steps:
