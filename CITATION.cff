@@ -6,9 +6,9 @@ type: software
 authors:
   - family-names: Jones
     given-names: Destin
-    website: "https://cwbhood.github.io/carfinder/about.html"
-repository-code: "https://github.com/cwbhood/carfinder"
-url: "https://cwbhood.github.io/carfinder/"
+    website: "https://destinjones.github.io/carfinder/about.html"
+repository-code: "https://github.com/destinjones/carfinder"
+url: "https://destinjones.github.io/carfinder/"
 license: MIT
 date-released: 2026-10-05
 keywords:
