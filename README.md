@@ -7,7 +7,7 @@ model right now, and the drive-off price for your state or city once taxes and f
 the USA, India, China, the UK, Australia, Mexico, Spain, Thailand, Russia, Brazil and Canada. It runs in your browser
 (phones too), with no install, no account, no ads and no tracking.
 
-**▶ [Website](https://cwbhood.github.io/carfinder/) · [Open CarFinder](https://cwbhood.github.io/carfinder/carfinder.html) · [How to use it](https://cwbhood.github.io/carfinder/#how) · [About the creator](https://cwbhood.github.io/carfinder/about.html)**
+**▶ [Website](https://destinjones.github.io/carfinder/) · [Open CarFinder](https://destinjones.github.io/carfinder/carfinder.html) · [How to use it](https://destinjones.github.io/carfinder/#how) · [About the creator](https://destinjones.github.io/carfinder/about.html)**
 
 ## What you can do
 - **See three prices, not one.** Every card shows the maker's price from base to top trim, the band dealers really sell
@@ -83,13 +83,13 @@ countries are welcome too: see [CONTRIBUTING.md](CONTRIBUTING.md) for the adapte
 formatter, a region table and one breakdown function).
 
 ## Credit and licence
-CarFinder is by [Destin Jones](https://cwbhood.github.io/carfinder/about.html) ([GitHub](https://github.com/cwbhood)),
+CarFinder is by [Destin Jones](https://destinjones.github.io/carfinder/about.html) ([GitHub](https://github.com/destinjones)),
 vibe coded in public with Claude as the building partner. Also by me:
-[Open Overwatch](https://cwbhood.github.io/open-overwatch/), a live map of the whole planet, and
-[Ironbound](https://cwbhood.github.io/godot-open-rts/), a free open source RTS made with Godot.
+[Open Overwatch](https://destinjones.github.io/open-overwatch/), a live map of the whole planet, and
+[Ironbound](https://destinjones.github.io/godot-open-rts/), a free open source RTS made with Godot.
 
 The code and data are MIT licensed ([LICENSE](LICENSE)): use it, fork it, build on it, and keep the copyright line.
 Vehicle prices and specifications belong to their manufacturers and are compiled here for reference. The fonts are
 under the SIL Open Font License ([brand/fonts/](brand/fonts/)).
 If you write about it or build on it, please credit it: *Jones, D. (2026). CarFinder 2026 [Computer software].
-https://github.com/cwbhood/carfinder* (GitHub's "Cite this repository" button reads [CITATION.cff](CITATION.cff)).
+https://github.com/destinjones/carfinder* (GitHub's "Cite this repository" button reads [CITATION.cff](CITATION.cff)).

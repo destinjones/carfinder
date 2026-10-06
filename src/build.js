@@ -12,7 +12,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const read = p => fs.readFileSync(path.join(ROOT, p), 'utf8');
 
-const SITE = 'https://cwbhood.github.io/carfinder/';
+const SITE = 'https://destinjones.github.io/carfinder/';
 const DESC = 'Every new car and truck on sale in the USA, India, China, the UK, Australia, Mexico, Spain, Thailand, Russia, Brazil and Canada: list price, what dealers really charge, and the on-road price for your state or city. Filters, compare, MPG and EV range. Free, open source, no account.';
 
 function assemble(){
@@ -62,7 +62,7 @@ function page(body){
 <meta name="twitter:image" content="${SITE}brand/social/og-1200x630.png">
 <link rel="stylesheet" href="brand/fonts/fonts.css">
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebApplication","name":"CarFinder 2026","url":"${SITE}carfinder.html","applicationCategory":"ReferenceApplication","operatingSystem":"Any (web browser)","browserRequirements":"Requires JavaScript","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"${DESC}","creator":{"@type":"Person","name":"Destin Jones","url":"${SITE}about.html"},"codeRepository":"https://github.com/cwbhood/carfinder","license":"https://opensource.org/licenses/MIT"}
+{"@context":"https://schema.org","@type":"WebApplication","name":"CarFinder 2026","url":"${SITE}carfinder.html","applicationCategory":"ReferenceApplication","operatingSystem":"Any (web browser)","browserRequirements":"Requires JavaScript","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"description":"${DESC}","creator":{"@type":"Person","name":"Destin Jones","url":"${SITE}about.html"},"codeRepository":"https://github.com/destinjones/carfinder","license":"https://opensource.org/licenses/MIT"}
 </script>
 </head>
 <body>
