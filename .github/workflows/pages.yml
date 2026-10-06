@@ -1,5 +1,5 @@
 # Deploys the website on every push to main: the repository as it is, minus the parts the site never loads.
-# The first run switches Settings > Pages > Source to "GitHub Actions" by itself (free on a public repository).
+# Settings > Pages > Source must be "GitHub Actions" (set once; free on a public repository).
 name: Website
 on:
   push:
@@ -30,8 +30,6 @@ jobs:
           rsync -a --exclude '.git' --exclude '.github' --exclude '_site' --exclude 'test' --exclude 'dist' --exclude 'node_modules' \
                 --exclude 'brand/tools' --exclude 'docs/tax-notes' ./ _site/
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true     # turns GitHub Pages on for the repository the first time this runs
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
